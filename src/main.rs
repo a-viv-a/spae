@@ -1,5 +1,5 @@
 use winnow::ascii::multispace0;
-use winnow::combinator::{alt, delimited, opt, repeat, terminated};
+use winnow::combinator::{alt, delimited, opt, repeat, separated_pair, terminated};
 use winnow::error::{ParserError, StrContext};
 use winnow::prelude::*;
 use winnow::stream::AsChar;
@@ -12,14 +12,23 @@ enum Expr<'s> {
     Command(&'s str),
     Ident(Ident<'s>),
     List(List<'s>),
+    Dependent {
+        when: Box<Expr<'s>>,
+        then: Box<Expr<'s>>,
+    },
 }
 
 #[derive(Debug)]
 enum Stmt<'s> {
     Let(Ident<'s>, Expr<'s>),
+    Expr(Expr<'s>),
 }
 
 type List<'s> = Vec<Expr<'s>>;
+
+fn unpack<L, R, T>(f: impl FnOnce(L, R) -> T) -> impl FnOnce((L, R)) -> T {
+    |(l, r)| f(l, r)
+}
 
 fn ws<'a, F, O, E: ParserError<&'a str>>(inner: F) -> impl Parser<&'a str, O, E>
 where
@@ -52,8 +61,23 @@ fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
         .map(Expr::List)
 }
 
-fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     alt((ws(ident.map(Expr::Ident)), ws(command), ws(list)))
+        .context(StrContext::Label("finite expr"))
+        .parse_next(input)
+}
+
+fn dependent<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+    separated_pair(finite_expr, '>', expr)
+        .parse_next(input)
+        .map(|(when, then)| Expr::Dependent {
+            when: Box::new(when),
+            then: Box::new(then),
+        })
+}
+
+fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+    alt((dependent, finite_expr))
         .context(StrContext::Label("expr"))
         .parse_next(input)
 }
@@ -64,7 +88,7 @@ fn let_assignment<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
         terminated(expr, ws(';')),
     )
         .parse_next(input)
-        .map(|(ident, expr)| Stmt::Let(ident, expr))
+        .map(unpack(Stmt::Let))
 }
 
 // fn list<'s>(input: &mut &'s str) -> PResult<&'s str> {}
@@ -78,6 +102,7 @@ fn main() {
     let mut input = "let list_name = [ident, ``command``, ident];";
     // let mut input = "let a = b;";
     // let mut input = "let cmd = `cmd name`;";
+    // let mut input = "let then = a > b;";
     let assign = let_assignment.parse_next(&mut input).unwrap();
     println!("{input}\n------\n{assign:?}");
 }
