@@ -28,6 +28,3 @@ let riverctl = maybe one [
   resize,
   snap,
 ];
-
-
-export riverctl

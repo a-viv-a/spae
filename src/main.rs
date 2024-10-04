@@ -55,20 +55,21 @@ fn command<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    delimited('[', repeat(0.., terminated(expr, opt(','))), ']')
+    delimited('[', repeat(0.., terminated(expr, ws(opt(',')))), ']')
         .context(StrContext::Label("list"))
         .parse_next(input)
         .map(Expr::List)
 }
 
 fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    alt((ws(ident.map(Expr::Ident)), ws(command), ws(list)))
+    ws(alt((ident.map(Expr::Ident), command, list)))
         .context(StrContext::Label("finite expr"))
         .parse_next(input)
 }
 
 fn dependent<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     separated_pair(finite_expr, '>', expr)
+        .context(StrContext::Label("dependent"))
         .parse_next(input)
         .map(|(when, then)| Expr::Dependent {
             when: Box::new(when),
@@ -77,7 +78,7 @@ fn dependent<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    alt((dependent, finite_expr))
+    alt((finite_expr, dependent))
         .context(StrContext::Label("expr"))
         .parse_next(input)
 }
@@ -96,28 +97,11 @@ fn stmt<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
 }
 
 fn stmts<'s>(input: &mut &'s str) -> PResult<Vec<Stmt<'s>>> {
-    repeat(0.., stmt).parse_next(input)
+    repeat(1.., stmt).parse_next(input)
 }
 
-// fn list<'s>(input: &mut &'s str) -> PResult<&'s str> {}
-
 fn main() {
-    // println!("Hello, world!");
-    // let mut input = include_str!("../samples/river.spae"); // TODO: actually take input
-    // let ident = preceded(let_assignment, ident)
-    // .parse_next(&mut input)
-    // .unwrap();
-    // let mut input = "let list_name = [ident, ``command``, ident];";
-    // let mut input = "let a = b;";
-    // let mut input = "let cmd = `cmd name`;";
-    // let mut input = "let then = a > b;";
-    // let mut input = "let chain = [`a`, `b`] > [`c`, `d`] > `e`;";
-    let mut input = "
-let ident = ident;
-let command = `command`;
-
-let chain = [`a`, `b`] > [`c`, `d`] > `e`;
-";
-    let assign = stmts.parse_next(&mut input).unwrap();
-    println!("{input}\n------\n{assign:#?}");
+    let mut input = include_str!("../samples/river.spae"); // TODO: actually take input
+    let output = stmts.parse_next(&mut input).unwrap();
+    println!("{input}\n------\n{output:#?}");
 }
