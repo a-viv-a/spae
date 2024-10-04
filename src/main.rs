@@ -91,6 +91,14 @@ fn let_assignment<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
         .map(unpack(Stmt::Let))
 }
 
+fn stmt<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
+    alt((let_assignment, terminated(expr.map(Stmt::Expr), ';'))).parse_next(input)
+}
+
+fn stmts<'s>(input: &mut &'s str) -> PResult<Vec<Stmt<'s>>> {
+    repeat(0.., stmt).parse_next(input)
+}
+
 // fn list<'s>(input: &mut &'s str) -> PResult<&'s str> {}
 
 fn main() {
@@ -99,10 +107,17 @@ fn main() {
     // let ident = preceded(let_assignment, ident)
     // .parse_next(&mut input)
     // .unwrap();
-    let mut input = "let list_name = [ident, ``command``, ident];";
+    // let mut input = "let list_name = [ident, ``command``, ident];";
     // let mut input = "let a = b;";
     // let mut input = "let cmd = `cmd name`;";
     // let mut input = "let then = a > b;";
-    let assign = let_assignment.parse_next(&mut input).unwrap();
-    println!("{input}\n------\n{assign:?}");
+    // let mut input = "let chain = [`a`, `b`] > [`c`, `d`] > `e`;";
+    let mut input = "
+let ident = ident;
+let command = `command`;
+
+let chain = [`a`, `b`] > [`c`, `d`] > `e`;
+";
+    let assign = stmts.parse_next(&mut input).unwrap();
+    println!("{input}\n------\n{assign:#?}");
 }
