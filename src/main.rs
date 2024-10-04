@@ -1,19 +1,31 @@
+use winnow::ascii::multispace0;
 use winnow::combinator::alt;
 use winnow::combinator::delimited;
 use winnow::combinator::opt;
 use winnow::combinator::repeat;
 use winnow::combinator::terminated;
+use winnow::error::ParserError;
 use winnow::prelude::*;
+use winnow::stream::AsChar;
+use winnow::token::one_of;
 use winnow::token::take;
 use winnow::token::take_until;
 use winnow::token::take_while;
 
-fn let_assignment<'s>(input: &mut &'s str) -> PResult<&'s str> {
-    "let ".parse_next(input)
+fn ws<'a, F, O, E: ParserError<&'a str>>(inner: F) -> impl Parser<&'a str, O, E>
+where
+    F: Parser<&'a str, O, E>,
+{
+    delimited(multispace0, inner, multispace0)
 }
 
 fn ident<'s>(input: &mut &'s str) -> PResult<&'s str> {
-    take_while(1.., 'a'..='z').parse_next(input)
+    (
+        one_of(|c: char| c.is_alpha() || c == '_'),
+        take_while(0.., |c: char| c.is_alphanum() || c == '_'),
+    )
+        .take()
+        .parse_next(input)
 }
 
 fn command<'s>(input: &mut &'s str) -> PResult<&'s str> {
@@ -23,13 +35,20 @@ fn command<'s>(input: &mut &'s str) -> PResult<&'s str> {
     return Ok(command);
 }
 
+fn expr<'s>(input: &mut &'s str) -> PResult<&'s str> {
+    alt((ws(ident), ws(command))).parse_next(input)
+}
+
 fn list<'s>(input: &mut &'s str) -> PResult<Vec<&'s str>> {
-    delimited(
-        "[",
-        repeat(0.., terminated(alt((ident, command)), opt(','))),
-        "]",
+    delimited('[', repeat(0.., terminated(expr, opt(','))), ']').parse_next(input)
+}
+
+fn let_assignment<'s>(input: &mut &'s str) -> PResult<(&'s str, &'s str)> {
+    (
+        delimited(ws("let"), ws(ident), ws('=')),
+        terminated(expr, ws(';')),
     )
-    .parse_next(input)
+        .parse_next(input)
 }
 
 // fn list<'s>(input: &mut &'s str) -> PResult<&'s str> {}
@@ -40,7 +59,7 @@ fn main() {
     // let ident = preceded(let_assignment, ident)
     // .parse_next(&mut input)
     // .unwrap();
-    let mut input = "[ident,``command``,ident]";
-    let list = list.parse_next(&mut input).unwrap();
-    println!("{input}\n------\n{list:?}");
+    let mut input = "let list_name = [ident, ``command``, ident];";
+    let assign = let_assignment.parse_next(&mut input).unwrap();
+    println!("{input}\n------\n{assign:?}");
 }
