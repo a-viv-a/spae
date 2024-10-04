@@ -1,0 +1,33 @@
+let cardinal = [
+    `up`,
+    `down`,
+    `left`,
+    `right`,
+];
+
+let direction = [
+    `next`,
+    `previous`,
+] + cardinal;
+
+let focus-output = `focus-output` > one direction > String('name');
+let focus-view = `focus-view` > maybe [`-skip-floating`] > one direction;
+let move = `move` > one cardinal > Number('delta');
+let resize = `resize` > one [ `horizontal`, `vertical` ] > Number('delta');
+let snap = `snap` > one direction;
+
+let riverctl = maybe one [
+    `-h`,
+    `-version`,
+] or one [
+    `close`,
+    `exit`,
+    focus-output,
+    focus-view,
+  move,
+  resize,
+  snap,
+];
+
+
+export riverctl
