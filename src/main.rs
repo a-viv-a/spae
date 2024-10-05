@@ -7,19 +7,29 @@ use winnow::token::{one_of, take, take_until, take_while};
 
 type Ident<'s> = &'s str;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum InfixSymbol {
     Concat,
     SetMinus,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum PrefixSymbol {
-    One,
     Maybe,
+    One,
+    Some,
+    All,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
+enum Type {
+    String,
+    Number,
+    Range,
+    File,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 enum Expr<'s> {
     Command(&'s str),
     Ident(Ident<'s>),
@@ -30,6 +40,7 @@ enum Expr<'s> {
     },
     Prefix(PrefixSymbol, Box<Expr<'s>>),
     Infix(Box<Expr<'s>>, InfixSymbol, Box<Expr<'s>>),
+    Type(&'s str),
 }
 
 #[derive(Debug)]
@@ -59,15 +70,23 @@ fn set_minus<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
     "-".parse_next(input).map(|_| InfixSymbol::SetMinus)
 }
 
-fn one<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
-    "one".parse_next(input).map(|_| PrefixSymbol::One)
-}
-
 fn maybe<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
     "maybe".parse_next(input).map(|_| PrefixSymbol::Maybe)
 }
 
-const RESERVED: [&str; 2] = ["one", "maybe"];
+fn one<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
+    "one".parse_next(input).map(|_| PrefixSymbol::One)
+}
+
+fn some<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
+    "some".parse_next(input).map(|_| PrefixSymbol::Some)
+}
+
+// fn all<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
+//     "all".parse_next(input).map(|_| PrefixSymbol::All)
+// }
+
+const ILLEGAL_IDENTS: [&str; 5] = ["maybe", "one", "some", "-", "let"];
 
 fn infix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     (finite_expr, alt((concat, set_minus)), expr)
@@ -77,19 +96,15 @@ fn infix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn prefix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    (ws(alt((one, maybe))), expr)
+    (ws(alt((maybe, one, some))), expr)
         .context(StrContext::Label("prefix"))
         .parse_next(input)
         .map(|(prefix, expr)| Expr::Prefix(prefix, Box::new(expr)))
 }
 
 fn ident<'s>(input: &mut &'s str) -> PResult<Ident<'s>> {
-    (
-        one_of(|c: char| c.is_alpha() || c == '_'),
-        take_while(0.., |c: char| c.is_alphanum() || c == '_'),
-    )
-        .take()
-        .verify(|ident| !RESERVED.contains(ident))
+    take_while(1.., |c: char| c.is_alphanum() || c == '_' || c == '-')
+        .verify(|ident| !ILLEGAL_IDENTS.contains(ident))
         .context(StrContext::Label("ident"))
         .parse_next(input)
 }
@@ -151,4 +166,37 @@ fn main() {
     let mut input = include_str!("../samples/river.spae"); // TODO: actually take input
     let output = stmts.parse_next(&mut input).unwrap();
     println!("{input}\n------\n{output:#?}");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    macro_rules! param {
+        ($transform:expr;
+            $($name:ident: $input:expr => $expected:expr,)*) => {
+        $(
+            #[test]
+            fn $name() {
+                let expected = $expected;
+                let mut input = $input;
+                assert_eq!(expected, $transform(&mut input));
+            }
+        )*
+        }
+    }
+
+    mod ident {
+        use super::*;
+        param! {
+            |input| ident.parse_next(input).ok();
+            basic:           "ident" => Some("ident"),
+            hyphens:         "a-b"   => Some("a-b"),
+            hyphen_prefix:   "-a"    => Some("-a"),
+            illegal_symbol:  "try%"  => Some("try"),
+            oops_all_hyphen: "-"     => None,
+            reserved_ident:  "some"  => None,
+            illegal_let:     "let"   => None,
+        }
+    }
 }
