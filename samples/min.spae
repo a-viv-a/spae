@@ -1,0 +1,6 @@
+let cardinal = [
+    `up`,
+    `down`,
+];
+
+let cmd = `cmd` > one cardinal;

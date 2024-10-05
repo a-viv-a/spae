@@ -16,15 +16,16 @@ let move = `move` > one cardinal > Number('delta');
 let resize = `resize` > one [ `horizontal`, `vertical` ] > Number('delta');
 let snap = `snap` > one direction;
 
-let riverctl = maybe one [
+let riverctl = one [
+    maybe one [
     `-h`,
     `-version`,
-] or one [
+], [
     `close`,
     `exit`,
     focus-output,
     focus-view,
-  move,
-  resize,
-  snap,
-];
+    move,
+    resize,
+    snap,
+]];

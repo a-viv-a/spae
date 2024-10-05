@@ -8,6 +8,18 @@ use winnow::token::{one_of, take, take_until, take_while};
 type Ident<'s> = &'s str;
 
 #[derive(Debug)]
+enum InfixSymbol {
+    Concat,
+    SetMinus,
+}
+
+#[derive(Debug)]
+enum PrefixSymbol {
+    One,
+    Maybe,
+}
+
+#[derive(Debug)]
 enum Expr<'s> {
     Command(&'s str),
     Ident(Ident<'s>),
@@ -16,6 +28,8 @@ enum Expr<'s> {
         when: Box<Expr<'s>>,
         then: Box<Expr<'s>>,
     },
+    Prefix(PrefixSymbol, Box<Expr<'s>>),
+    Infix(Box<Expr<'s>>, InfixSymbol, Box<Expr<'s>>),
 }
 
 #[derive(Debug)]
@@ -37,12 +51,45 @@ where
     delimited(multispace0, inner, multispace0)
 }
 
+fn concat<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
+    "+".parse_next(input).map(|_| InfixSymbol::Concat)
+}
+
+fn set_minus<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
+    "-".parse_next(input).map(|_| InfixSymbol::SetMinus)
+}
+
+fn one<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
+    "one".parse_next(input).map(|_| PrefixSymbol::One)
+}
+
+fn maybe<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
+    "maybe".parse_next(input).map(|_| PrefixSymbol::Maybe)
+}
+
+const RESERVED: [&str; 2] = ["one", "maybe"];
+
+fn infix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+    (finite_expr, alt((concat, set_minus)), expr)
+        .context(StrContext::Label("infix"))
+        .parse_next(input)
+        .map(|(lh, infix, rh)| Expr::Infix(Box::new(lh), infix, Box::new(rh)))
+}
+
+fn prefix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+    (ws(alt((one, maybe))), expr)
+        .context(StrContext::Label("prefix"))
+        .parse_next(input)
+        .map(|(prefix, expr)| Expr::Prefix(prefix, Box::new(expr)))
+}
+
 fn ident<'s>(input: &mut &'s str) -> PResult<Ident<'s>> {
     (
         one_of(|c: char| c.is_alpha() || c == '_'),
         take_while(0.., |c: char| c.is_alphanum() || c == '_'),
     )
         .take()
+        .verify(|ident| !RESERVED.contains(ident))
         .context(StrContext::Label("ident"))
         .parse_next(input)
 }
@@ -78,7 +125,7 @@ fn dependent<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    alt((finite_expr, dependent))
+    alt((prefix, infix, finite_expr, dependent))
         .context(StrContext::Label("expr"))
         .parse_next(input)
 }

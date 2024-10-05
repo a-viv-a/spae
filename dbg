@@ -1,0 +1,245 @@
+   Compiling spae v0.1.0 (/home/aviva/repos/spae)
+warning: field `0` is never read
+  --> src/main.rs:24:13
+   |
+24 |     Command(&'s str),
+   |     ------- ^^^^^^^
+   |     |
+   |     field in this variant
+   |
+   = note: `#[warn(dead_code)]` on by default
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+   |
+24 |     Command(()),
+   |             ~~
+
+warning: field `0` is never read
+  --> src/main.rs:25:11
+   |
+25 |     Ident(Ident<'s>),
+   |     ----- ^^^^^^^^^
+   |     |
+   |     field in this variant
+   |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+   |
+25 |     Ident(()),
+   |           ~~
+
+warning: field `0` is never read
+  --> src/main.rs:26:10
+   |
+26 |     List(List<'s>),
+   |     ---- ^^^^^^^^
+   |     |
+   |     field in this variant
+   |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+   |
+26 |     List(()),
+   |          ~~
+
+warning: fields `when` and `then` are never read
+  --> src/main.rs:28:9
+   |
+27 |     Dependent {
+   |     --------- fields in this variant
+28 |         when: Box<Expr<'s>>,
+   |         ^^^^
+29 |         then: Box<Expr<'s>>,
+   |         ^^^^
+
+warning: fields `0` and `1` are never read
+  --> src/main.rs:31:12
+   |
+31 |     Prefix(PrefixSymbol, Box<Expr<'s>>),
+   |     ------ ^^^^^^^^^^^^  ^^^^^^^^^^^^^
+   |     |
+   |     fields in this variant
+   |
+help: consider changing the fields to be of unit type to suppress this warning while preserving the field numbering, or remove the fields
+   |
+31 |     Prefix((), ()),
+   |            ~~  ~~
+
+warning: fields `0`, `1`, and `2` are never read
+  --> src/main.rs:32:11
+   |
+32 |     Infix(Box<Expr<'s>>, InfixSymbol, Box<Expr<'s>>),
+   |     ----- ^^^^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^^^^
+   |     |
+   |     fields in this variant
+   |
+help: consider changing the fields to be of unit type to suppress this warning while preserving the field numbering, or remove the fields
+   |
+32 |     Infix((), (), ()),
+   |           ~~  ~~  ~~
+
+warning: fields `0` and `1` are never read
+  --> src/main.rs:37:9
+   |
+37 |     Let(Ident<'s>, Expr<'s>),
+   |     --- ^^^^^^^^^  ^^^^^^^^
+   |     |
+   |     fields in this variant
+   |
+help: consider changing the fields to be of unit type to suppress this warning while preserving the field numbering, or remove the fields
+   |
+37 |     Let((), ()),
+   |         ~~  ~~
+
+warning: field `0` is never read
+  --> src/main.rs:38:10
+   |
+38 |     Expr(Expr<'s>),
+   |     ---- ^^^^^^^^
+   |     |
+   |     field in this variant
+   |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+   |
+38 |     Expr(()),
+   |          ~~
+
+warning: `spae` (bin "spae") generated 8 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.27s
+     Running `target/debug/spae`
+> repeat                                            | "let a = list \\ b"∅
+ > alt                                              | "let a = list \\ b"∅
+  > delimited                                       | "let a = list \\ b"∅
+   > delimited                                      | "let a = list \\ b"∅
+    > multispace0                                   | "let a = list \\ b"∅
+     > take_while                                   | "let a = list \\ b"∅
+     < take_while                                   | +0
+    < multispace0                                   | +0
+    > "let"                                         | "let a = list \\ b"∅
+    < "let"                                         | +3
+    > multispace0                                   | " a = list \\ b"∅
+     > take_while                                   | " a = list \\ b"∅
+     < take_while                                   | +1
+    < multispace0                                   | +1
+   < delimited                                      | +4
+   > delimited                                      | "a = list \\ b"∅
+    > multispace0                                   | "a = list \\ b"∅
+     > take_while                                   | "a = list \\ b"∅
+     < take_while                                   | +0
+    < multispace0                                   | +0
+    > Label("ident")                                | "a = list \\ b"∅
+     > one_of                                       | "a = list \\ b"∅
+      > any                                         | "a = list \\ b"∅
+      < any                                         | +1
+      | verify                                      | 
+     < one_of                                       | +1
+     > take_while                                   | " = list \\ b"∅
+     < take_while                                   | +0
+     | verify                                       | 
+    < Label("ident")                                | +1
+    > multispace0                                   | " = list \\ b"∅
+     > take_while                                   | " = list \\ b"∅
+     < take_while                                   | +1
+    < multispace0                                   | +1
+   < delimited                                      | +2
+   > delimited                                      | "= list \\ b"∅
+    > multispace0                                   | "= list \\ b"∅
+     > take_while                                   | "= list \\ b"∅
+     < take_while                                   | +0
+    < multispace0                                   | +0
+    > '='                                           | "= list \\ b"∅
+    < '='                                           | +1
+    > multispace0                                   | " list \\ b"∅
+     > take_while                                   | " list \\ b"∅
+     < take_while                                   | +1
+    < multispace0                                   | +1
+   < delimited                                      | +2
+  < delimited                                       | +8
+  > terminated                                      | "list \\ b"∅
+   > Label("expr")                                  | "list \\ b"∅
+    > alt                                           | "list \\ b"∅
+     > Label("finite expr")                         | "list \\ b"∅
+      > delimited                                   | "list \\ b"∅
+       > multispace0                                | "list \\ b"∅
+        > take_while                                | "list \\ b"∅
+        < take_while                                | +0
+       < multispace0                                | +0
+       > alt                                        | "list \\ b"∅
+        > Label("prefix")                           | "list \\ b"∅
+         > alt                                      | "list \\ b"∅
+          > "one"                                   | "list \\ b"∅
+          < "one"                                   | backtrack
+          > "maybe"                                 | "list \\ b"∅
+          < "maybe"                                 | backtrack
+         < alt                                      | backtrack
+        < Label("prefix")                           | backtrack
+        > Label("ident")                            | "list \\ b"∅
+         > one_of                                   | "list \\ b"∅
+          > any                                     | "list \\ b"∅
+          < any                                     | +1
+          | verify                                  | 
+         < one_of                                   | +1
+         > take_while                               | "ist \\ b"∅
+         < take_while                               | +3
+         | verify                                   | 
+        < Label("ident")                            | +4
+       < alt                                        | +4
+       > multispace0                                | " \\ b"∅
+        > take_while                                | " \\ b"∅
+        < take_while                                | +1
+       < multispace0                                | +1
+      < delimited                                   | +5
+     < Label("finite expr")                         | +5
+    < alt                                           | +5
+   < Label("expr")                                  | +5
+   > delimited                                      | "\\ b"∅
+    > multispace0                                   | "\\ b"∅
+     > take_while                                   | "\\ b"∅
+     < take_while                                   | +0
+    < multispace0                                   | +0
+    > ';'                                           | "\\ b"∅
+    < ';'                                           | backtrack
+   < delimited                                      | backtrack
+  < terminated                                      | backtrack
+  > terminated                                      | "let a = list \\ b"∅
+   > Label("expr")                                  | "let a = list \\ b"∅
+    > alt                                           | "let a = list \\ b"∅
+     > Label("finite expr")                         | "let a = list \\ b"∅
+      > delimited                                   | "let a = list \\ b"∅
+       > multispace0                                | "let a = list \\ b"∅
+        > take_while                                | "let a = list \\ b"∅
+        < take_while                                | +0
+       < multispace0                                | +0
+       > alt                                        | "let a = list \\ b"∅
+        > Label("prefix")                           | "let a = list \\ b"∅
+         > alt                                      | "let a = list \\ b"∅
+          > "one"                                   | "let a = list \\ b"∅
+          < "one"                                   | backtrack
+          > "maybe"                                 | "let a = list \\ b"∅
+          < "maybe"                                 | backtrack
+         < alt                                      | backtrack
+        < Label("prefix")                           | backtrack
+        > Label("ident")                            | "let a = list \\ b"∅
+         > one_of                                   | "let a = list \\ b"∅
+          > any                                     | "let a = list \\ b"∅
+          < any                                     | +1
+          | verify                                  | 
+         < one_of                                   | +1
+         > take_while                               | "et a = list \\ b"∅
+         < take_while                               | +2
+         | verify                                   | 
+        < Label("ident")                            | +3
+       < alt                                        | +3
+       > multispace0                                | " a = list \\ b"∅
+        > take_while                                | " a = list \\ b"∅
+        < take_while                                | +1
+       < multispace0                                | +1
+      < delimited                                   | +4
+     < Label("finite expr")                         | +4
+    < alt                                           | +4
+   < Label("expr")                                  | +4
+   > ';'                                            | "a = list \\ b"∅
+   < ';'                                            | backtrack
+  < terminated                                      | backtrack
+ < alt                                              | backtrack
+< repeat                                            | backtrack
+thread 'main' panicked at src/main.rs:153:47:
+called `Result::unwrap()` on an `Err` value: Backtrack(ContextError { context: [], cause: None })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
