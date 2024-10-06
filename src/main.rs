@@ -89,9 +89,15 @@ fn some<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
 
 const ILLEGAL_IDENTS: [&str; 5] = ["maybe", "one", "some", "-", "let"];
 
-fn infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
-    alt((concat, set_minus, dependent))
-        .context(StrContext::Label("infix symbol"))
+fn ltr_infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
+    alt((concat, set_minus))
+        .context(StrContext::Label("left to right infix symbol"))
+        .parse_next(input)
+}
+
+fn rtl_infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
+    dependent
+        .context(StrContext::Label("right to left infix symbol"))
         .parse_next(input)
 }
 
@@ -130,24 +136,37 @@ fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    fn expr_fragment<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-        alt((prefix, finite_expr))
-            .context(StrContext::Label("expr"))
+    fn expr_ltr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+        fn expr_fragment<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+            alt((prefix, finite_expr))
+                .context(StrContext::Label("left to right expr"))
+                .parse_next(input)
+        }
+        let lhs = expr_fragment.parse_next(input)?;
+        fn expr_ltr_pairs<'s>(lhs: Expr<'s>) -> impl FnMut(&mut &'s str) -> PResult<Expr<'s>> {
+            move |input: &mut &str| {
+                if let Some((infix, rhs)) =
+                    opt((ltr_infix_symbol, expr_fragment)).parse_next(input)?
+                {
+                    let lhs = Expr::Infix(Box::new(lhs.clone()), infix, Box::new(rhs));
+                    return expr_ltr_pairs(lhs).parse_next(input);
+                }
+                return Ok(lhs.clone());
+            }
+        }
+        return expr_ltr_pairs(lhs).parse_next(input);
+    }
+    // we need to handle right to left infix operations out here
+    fn expr_rtl<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+        (expr_ltr, rtl_infix_symbol, expr)
+            .context(StrContext::Label("right to left expr"))
+            .map(|(lhs, infix, rhs)| Expr::Infix(Box::new(lhs), infix, Box::new(rhs)))
             .parse_next(input)
     }
-    let lhs = expr_fragment.parse_next(input)?;
-    fn expr_left_to_right_pairs<'s>(
-        lhs: Expr<'s>,
-    ) -> impl FnMut(&mut &'s str) -> PResult<Expr<'s>> {
-        move |input: &mut &str| {
-            if let Some((infix, rhs)) = opt((infix_symbol, expr_fragment)).parse_next(input)? {
-                let lhs = Expr::Infix(Box::new(lhs.clone()), infix, Box::new(rhs));
-                return expr_left_to_right_pairs(lhs).parse_next(input);
-            }
-            return Ok(lhs.clone());
-        }
-    }
-    return expr_left_to_right_pairs(lhs).parse_next(input);
+
+    alt((expr_rtl, expr_ltr))
+        .context(StrContext::Label("expr"))
+        .parse_next(input)
 }
 
 fn let_assignment<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
@@ -267,6 +286,7 @@ mod tests {
         param! {
             |input| stmts.parse(input).ok();
             let_assignment: "let a = b;" => Some(vec![s_let!(a = ident!(b))]),
+            let_dependence: "let a = b > c;" => Some(vec![s_let!(a = infix!(ident!(b), > ident!(c)))]),
         }
     }
 }
