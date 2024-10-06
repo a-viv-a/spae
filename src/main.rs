@@ -9,6 +9,7 @@ type Ident<'s> = &'s str;
 
 #[derive(Debug, PartialEq, Eq)]
 enum InfixSymbol {
+    Dependent,
     Concat,
     SetMinus,
 }
@@ -34,10 +35,6 @@ enum Expr<'s> {
     Command(&'s str),
     Ident(Ident<'s>),
     List(List<'s>),
-    Dependent {
-        when: Box<Expr<'s>>,
-        then: Box<Expr<'s>>,
-    },
     Prefix(PrefixSymbol, Box<Expr<'s>>),
     Infix(Box<Expr<'s>>, InfixSymbol, Box<Expr<'s>>),
     Type(&'s str),
@@ -60,6 +57,10 @@ where
     F: Parser<&'a str, O, E>,
 {
     delimited(multispace0, inner, multispace0)
+}
+
+fn dependent<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
+    ">".parse_next(input).map(|_| InfixSymbol::Dependent)
 }
 
 fn concat<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
@@ -89,7 +90,7 @@ fn some<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
 const ILLEGAL_IDENTS: [&str; 5] = ["maybe", "one", "some", "-", "let"];
 
 fn infix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    (finite_expr, alt((concat, set_minus)), expr)
+    (finite_expr, alt((concat, set_minus, dependent)), expr)
         .context(StrContext::Label("infix"))
         .parse_next(input)
         .map(|(lh, infix, rh)| Expr::Infix(Box::new(lh), infix, Box::new(rh)))
@@ -129,18 +130,8 @@ fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
         .parse_next(input)
 }
 
-fn dependent<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    separated_pair(finite_expr, '>', expr)
-        .context(StrContext::Label("dependent"))
-        .parse_next(input)
-        .map(|(when, then)| Expr::Dependent {
-            when: Box::new(when),
-            then: Box::new(then),
-        })
-}
-
 fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    alt((prefix, infix, finite_expr, dependent))
+    alt((prefix, infix, finite_expr))
         .context(StrContext::Label("expr"))
         .parse_next(input)
 }
@@ -214,10 +205,7 @@ mod tests {
             Expr::Infix(Box::new($lhs), InfixSymbol::SetMinus, Box::new($rhs))
         };
         ($lhs:expr, > $rhs:expr) => {
-            Expr::Dependent {
-                when: Box::new($lhs),
-                then: Box::new($rhs),
-            }
+            Expr::Infix(Box::new($lhs), InfixSymbol::Dependent, Box::new($rhs))
         };
     }
 
