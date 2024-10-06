@@ -43,7 +43,7 @@ enum Expr<'s> {
     Type(&'s str),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum Stmt<'s> {
     Let(Ident<'s>, Expr<'s>),
     Expr(Expr<'s>),
@@ -174,7 +174,7 @@ mod tests {
 
     macro_rules! param {
         ($transform:expr;
-            $($name:ident: $input:expr => $expected:expr,)*) => {
+            $($name:ident: $input:expr => $expected:expr),* $(,)?) => {
         $(
             #[test]
             fn $name() {
@@ -186,17 +186,80 @@ mod tests {
         }
     }
 
+    macro_rules! list {
+        ($($item:expr),* $(,)?) => {
+            Expr::List(vec![
+                $($item,)*
+            ])
+        };
+    }
+
+    macro_rules! ident {
+        ($ident:ident) => {
+            Expr::Ident(stringify!($ident))
+        };
+    }
+
+    macro_rules! s_let {
+        ($ident:ident = $val:expr) => {
+            Stmt::Let(stringify!($ident), $val)
+        };
+    }
+
+    macro_rules! infix {
+        ($lhs:expr, + $rhs:expr) => {
+            Expr::Infix(Box::new($lhs), InfixSymbol::Concat, Box::new($rhs))
+        };
+        ($lhs:expr, - $rhs:expr) => {
+            Expr::Infix(Box::new($lhs), InfixSymbol::SetMinus, Box::new($rhs))
+        };
+        ($lhs:expr, > $rhs:expr) => {
+            Expr::Dependent {
+                when: Box::new($lhs),
+                then: Box::new($rhs),
+            }
+        };
+    }
+
     mod ident {
         use super::*;
         param! {
-            |input| ident.parse_next(input).ok();
+            |input| ident.parse(input).ok();
             basic:           "ident" => Some("ident"),
             hyphens:         "a-b"   => Some("a-b"),
             hyphen_prefix:   "-a"    => Some("-a"),
-            illegal_symbol:  "try%"  => Some("try"),
+            illegal_symbol:  "try%"  => None,
             oops_all_hyphen: "-"     => None,
             reserved_ident:  "some"  => None,
             illegal_let:     "let"   => None,
+        }
+    }
+
+    mod list {
+        use super::*;
+        param! {
+            |input| list.parse(input).ok();
+            basic:          "[l, n]"    => Some(list![ident!(l), ident!(n)]),
+            spaces:         "[ l, n ]"  => Some(list![ident!(l), ident!(n)]),
+            trailing_comma: "[ l, n, ]" => Some(list![ident!(l), ident!(n)]),
+        }
+    }
+
+    mod expr {
+        use super::*;
+        param! {
+            |input| expr.parse(input).ok();
+            concat: "a + b" => Some(infix!(ident!(a), + ident!(b))),
+            set_minus: "a - b" => Some(infix!(ident!(a), - ident!(b))),
+            dependent: "a > b" => Some(infix!(ident!(a), > ident!(b))),
+        }
+    }
+
+    mod stmts {
+        use super::*;
+        param! {
+            |input| stmts.parse(input).ok();
+            let_assignment: "let a = b;" => Some(vec![s_let!(a = ident!(b))]),
         }
     }
 }
