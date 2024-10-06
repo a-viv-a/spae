@@ -32,7 +32,7 @@ enum Type {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum Expr<'s> {
-    Command(&'s str),
+    String(&'s str),
     Ident(Ident<'s>),
     List(List<'s>),
     Prefix(PrefixSymbol, Box<Expr<'s>>),
@@ -115,11 +115,11 @@ fn ident<'s>(input: &mut &'s str) -> PResult<Ident<'s>> {
         .parse_next(input)
 }
 
-fn command<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+fn string<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     let open_grave = take_while(1.., '`').parse_next(input)?;
-    let command = take_until(0.., open_grave).parse_next(input)?;
+    let String = take_until(0.., open_grave).parse_next(input)?;
     take(open_grave.len()).void().parse_next(input)?;
-    return Ok(Expr::Command(command));
+    return Ok(Expr::String(String));
 }
 
 fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
@@ -130,7 +130,7 @@ fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    ws(alt((ident.map(Expr::Ident), command, list)))
+    ws(alt((ident.map(Expr::Ident), string, list)))
         .context(StrContext::Label("finite expr"))
         .parse_next(input)
 }
