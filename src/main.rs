@@ -169,9 +169,8 @@ mod tests {
         $(
             #[test]
             fn $name() {
-                let expected = $expected;
-                let mut input = $input;
-                assert_eq!(expected, $transform(&mut input));
+                println!($input);
+                pretty_assertions::assert_eq!($transform($input), $expected);
             }
         )*
         }
@@ -240,6 +239,8 @@ mod tests {
             concat: "a + b" => Some(infix!(ident!(a), + ident!(b))),
             set_minus: "a - b" => Some(infix!(ident!(a), - ident!(b))),
             dependent: "a > b" => Some(infix!(ident!(a), > ident!(b))),
+            left_to_right: "a + b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), - ident!(c))),
+            nesting: "a + b > b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), > infix!(ident!(b), - ident!(c)))),
         }
     }
 
