@@ -30,6 +30,7 @@
               pre-commit
               rustPackages.clippy
               rust-analyzer
+              cargo-watch
               bacon
             ];
             RUST_SRC_PATH = rustPlatform.rustLibSrc;

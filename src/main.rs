@@ -169,8 +169,12 @@ mod tests {
         $(
             #[test]
             fn $name() {
-                println!($input);
-                pretty_assertions::assert_eq!($transform($input), $expected);
+                let input = $input;
+                dbg!(input);
+                let actual = $transform($input);
+                let expected = $expected;
+                dbg!(&actual, &expected);
+                pretty_assertions::assert_eq!(actual, expected);
             }
         )*
         }
