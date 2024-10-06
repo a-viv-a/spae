@@ -7,14 +7,14 @@ use winnow::token::{one_of, take, take_until, take_while};
 
 type Ident<'s> = &'s str;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 enum InfixSymbol {
     Dependent,
     Concat,
     SetMinus,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 enum PrefixSymbol {
     Maybe,
     One,
@@ -22,7 +22,7 @@ enum PrefixSymbol {
     All,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 enum Type {
     String,
     Number,
@@ -30,7 +30,7 @@ enum Type {
     File,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 enum Expr<'s> {
     Command(&'s str),
     Ident(Ident<'s>),
@@ -40,7 +40,7 @@ enum Expr<'s> {
     Type(&'s str),
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 enum Stmt<'s> {
     Let(Ident<'s>, Expr<'s>),
     Expr(Expr<'s>),
@@ -89,11 +89,10 @@ fn some<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
 
 const ILLEGAL_IDENTS: [&str; 5] = ["maybe", "one", "some", "-", "let"];
 
-fn infix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    (finite_expr, alt((concat, set_minus, dependent)), expr)
-        .context(StrContext::Label("infix"))
+fn infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
+    alt((concat, set_minus, dependent))
+        .context(StrContext::Label("infix symbol"))
         .parse_next(input)
-        .map(|(lh, infix, rh)| Expr::Infix(Box::new(lh), infix, Box::new(rh)))
 }
 
 fn prefix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
@@ -131,9 +130,24 @@ fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    alt((prefix, infix, finite_expr))
-        .context(StrContext::Label("expr"))
-        .parse_next(input)
+    fn expr_fragment<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+        alt((prefix, finite_expr))
+            .context(StrContext::Label("expr"))
+            .parse_next(input)
+    }
+    let lhs = expr_fragment.parse_next(input)?;
+    fn expr_left_to_right_pairs<'s>(
+        lhs: Expr<'s>,
+    ) -> impl FnMut(&mut &'s str) -> PResult<Expr<'s>> {
+        move |input: &mut &str| {
+            if let Some((infix, rhs)) = opt((infix_symbol, expr_fragment)).parse_next(input)? {
+                let lhs = Expr::Infix(Box::new(lhs.clone()), infix, Box::new(rhs));
+                return expr_left_to_right_pairs(lhs).parse_next(input);
+            }
+            return Ok(lhs.clone());
+        }
+    }
+    return expr_left_to_right_pairs(lhs).parse_next(input);
 }
 
 fn let_assignment<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
