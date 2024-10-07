@@ -45,11 +45,25 @@ fn unpack<L, R, T>(f: impl FnOnce(L, R) -> T) -> impl FnOnce((L, R)) -> T {
     |(l, r)| f(l, r)
 }
 
-fn ws<'a, F, O, E: ParserError<&'a str>>(inner: F) -> impl Parser<&'a str, O, E>
+fn lr_ws<'a, F, O, E: ParserError<&'a str>>(inner: F) -> impl Parser<&'a str, O, E>
 where
     F: Parser<&'a str, O, E>,
 {
     delimited(multispace0, inner, multispace0)
+}
+
+fn l_ws<'a, F, O, E: ParserError<&'a str>>(inner: F) -> impl Parser<&'a str, O, E>
+where
+    F: Parser<&'a str, O, E>,
+{
+    preceded(multispace0, inner)
+}
+
+fn r_ws<'a, F, O, E: ParserError<&'a str>>(inner: F) -> impl Parser<&'a str, O, E>
+where
+    F: Parser<&'a str, O, E>,
+{
+    terminated(inner, multispace0)
 }
 
 fn dependent<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
@@ -95,7 +109,7 @@ fn rtl_infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
 }
 
 fn prefix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    (ws(alt((maybe, one, some))), expr)
+    (alt((maybe, one, some)), expr)
         .context(StrContext::Label("prefix"))
         .parse_next(input)
         .map(|(prefix, expr)| Expr::Prefix(prefix, Box::new(expr)))
@@ -131,31 +145,20 @@ fn directive<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     return Ok(string);
 }
 
-// fn described<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-//     separated_pair(
-//         alt((ident_expr, string)),
-//         ws(':'),
-//         alt((ident_expr, string)),
-//     )
-//     .context(StrContext::Label("described value"))
-//     .parse_next(input)
-//     .map(|(expr, description)| Expr::Described(Box::new(expr), Box::new(description)))
-// }
-
 fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    delimited('[', repeat(0.., terminated(expr, ws(opt(',')))), ']')
+    delimited('[', repeat(0.., terminated(expr, r_ws(opt(',')))), ']')
         .context(StrContext::Label("list"))
         .parse_next(input)
         .map(Expr::List)
 }
 
 fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    let expr = ws(alt((ident_expr, string, list, directive)))
+    let expr = lr_ws(alt((ident_expr, string, list, directive)))
         .context(StrContext::Label("finite expr"))
         .parse_next(input)?;
 
     // check for description, which binds stronger than any other infix operator
-    if let Some(description) = opt(preceded(ws(':'), alt((string, ident_expr))))
+    if let Some(description) = opt(preceded(r_ws(':'), alt((string, ident_expr))))
         .context(StrContext::Label("description"))
         .parse_next(input)?
     {
@@ -200,8 +203,8 @@ fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 
 fn let_assignment<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
     (
-        delimited(ws("let"), ws(ident), ws('=')),
-        terminated(expr, ws(';')),
+        delimited(lr_ws("let"), ident, l_ws('=')),
+        terminated(expr, r_ws(';')),
     )
         .parse_next(input)
         .map(unpack(Stmt::Let))
@@ -338,6 +341,8 @@ mod tests {
             |input| stmts.parse(input).ok();
             let_assignment: "let a = b;"     => Some(vec![s_let!(a = ident!(b))]),
             let_dependence: "let a = b > c;" => Some(vec![s_let!(a = infix!(ident!(b), > ident!(c)))]),
+            multilet:       "let a = b;\nlet b = c;" => Some(vec![s_let!(a = ident!(b)), s_let!(b = ident!(c))]),
+            jagged_let:     "  let a = b \n;\n let b = c;\n\n" => Some(vec![s_let!(a = ident!(b)), s_let!(b = ident!(c))]),
         }
     }
 }
