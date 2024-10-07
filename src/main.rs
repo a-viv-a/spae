@@ -202,7 +202,7 @@ fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     }
     // we need to handle right to left infix operations out here
     fn expr_rtl<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-        (expr_ltr, rtl_infix_symbol, expr)
+        (expr_ltr, lr_ws(rtl_infix_symbol), expr)
             .context(StrContext::Label("right to left expr"))
             .map(|(lhs, infix, rhs)| Expr::Infix(Box::new(lhs), infix, Box::new(rhs)))
             .parse_next(input)
@@ -358,7 +358,19 @@ mod tests {
             prefix: "one a" => Some(prefix!(One: ident!(a))),
             prefixes: "maybe one a" => Some(prefix!(Maybe One: ident!(a))),
 
-            ex1: "`focus-output`:`details` > one cardinal > {string}: `name`" => Some(
+            ex1: "a:`a` > c:`c`" => Some(
+                infix!(
+                    desc!(ident!(a);s "a"),
+                    > desc!(ident!(c);s "c")
+                )
+            ),
+            ex2: "a:`a` > one c:`c`" => Some(
+                infix!(
+                    desc!(ident!(a);s "a"),
+                    > prefix!(One: desc!(ident!(c);s "c"))
+                )
+            ),
+            ex3: "`focus-output`:`details` > one cardinal > {string}: `name`" => Some(
                 infix!(
                     desc!(Expr::String("focus-output");s "details"),
                     > infix!(
