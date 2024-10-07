@@ -17,9 +17,10 @@ pub enum InfixSymbol {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum PrefixSymbol {
     Maybe,
+    Require,
     One,
     Some,
-    // All,
+    All,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -78,23 +79,7 @@ fn set_minus<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
     "-".parse_next(input).map(|_| InfixSymbol::SetMinus)
 }
 
-fn maybe<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
-    "maybe".parse_next(input).map(|_| PrefixSymbol::Maybe)
-}
-
-fn one<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
-    "one".parse_next(input).map(|_| PrefixSymbol::One)
-}
-
-fn some<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
-    "some".parse_next(input).map(|_| PrefixSymbol::Some)
-}
-
-// fn all<'s>(input: &mut &'s str) -> PResult<PrefixSymbol> {
-//     "all".parse_next(input).map(|_| PrefixSymbol::All)
-// }
-
-const ILLEGAL_IDENTS: [&str; 5] = ["maybe", "one", "some", "-", "let"];
+const ILLEGAL_IDENTS: &'static [&str] = &["maybe", "require", "one", "some", "all", "-", "let"];
 
 fn ltr_infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
     alt((concat, set_minus))
@@ -109,7 +94,21 @@ fn rtl_infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
 }
 
 fn prefix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    (r_ws(alt((maybe, one, some))), finite_expr)
+    macro_rules! prefix {
+        ($string:expr => $name:ident) => {
+            $string.void().map(|_| PrefixSymbol::$name)
+        };
+    }
+    (
+        r_ws(alt((
+            prefix!("maybe"   => Maybe),
+            prefix!("require" => Require),
+            prefix!("one"     => One),
+            prefix!("some"    => Some),
+            prefix!("all"     => All),
+        ))),
+        finite_expr,
+    )
         .context(StrContext::Label("prefix"))
         .parse_next(input)
         .map(|(prefix, expr)| Expr::Prefix(prefix, Box::new(expr)))
