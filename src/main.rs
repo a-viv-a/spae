@@ -109,7 +109,7 @@ fn rtl_infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
 }
 
 fn prefix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    (r_ws(alt((maybe, one, some))), expr)
+    (r_ws(alt((maybe, one, some))), finite_expr)
         .context(StrContext::Label("prefix"))
         .parse_next(input)
         .map(|(prefix, expr)| Expr::Prefix(prefix, Box::new(expr)))
@@ -165,7 +165,7 @@ fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    let expr = lr_ws(alt((ident_expr, string, list, directive)))
+    let expr = lr_ws(alt((prefix, ident_expr, string, list, directive)))
         .context(StrContext::Label("finite expr"))
         .parse_next(input)?;
 
@@ -181,16 +181,11 @@ fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 
 fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     fn expr_ltr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-        fn expr_fragment<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-            alt((prefix, finite_expr))
-                .context(StrContext::Label("left to right expr"))
-                .parse_next(input)
-        }
-        let lhs = expr_fragment.parse_next(input)?;
+        let lhs = finite_expr.parse_next(input)?;
         fn expr_ltr_pairs<'s>(lhs: Expr<'s>) -> impl FnMut(&mut &'s str) -> PResult<Expr<'s>> {
             move |input: &mut &str| {
                 if let Some((infix, rhs)) =
-                    opt((ltr_infix_symbol, expr_fragment)).parse_next(input)?
+                    opt((ltr_infix_symbol, finite_expr)).parse_next(input)?
                 {
                     let lhs = Expr::Infix(Box::new(lhs.clone()), infix, Box::new(rhs));
                     return expr_ltr_pairs(lhs).parse_next(input);
