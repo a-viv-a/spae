@@ -127,21 +127,33 @@ fn ident_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn string<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    let open_graves = take_while(1.., '`').parse_next(input)?;
+    let open_graves = take_while(1.., '`')
+        .context(StrContext::Label("opening graves"))
+        .parse_next(input)?;
     let string = take_until(0.., open_graves)
+        .context(StrContext::Label("string body"))
         .parse_next(input)
         .map(Expr::String)?;
-    take(open_graves.len()).void().parse_next(input)?;
+    take(open_graves.len())
+        .context(StrContext::Label("closing graves"))
+        .void()
+        .parse_next(input)?;
     return Ok(string);
 }
 
 fn directive<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    let open_braces = take_while(1.., '{').parse_next(input)?;
+    let open_braces = take_while(1.., '{')
+        .context(StrContext::Label("opening braces"))
+        .parse_next(input)?;
     let close_braces = "}".repeat(open_braces.len());
     let string = take_until(0.., close_braces.as_str())
+        .context(StrContext::Label("directive body"))
         .parse_next(input)
         .map(Expr::Directive)?;
-    take(close_braces.len()).void().parse_next(input)?;
+    take(close_braces.len())
+        .context(StrContext::Label("closing braces"))
+        .void()
+        .parse_next(input)?;
     return Ok(string);
 }
 
@@ -211,7 +223,7 @@ fn let_assignment<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
 }
 
 fn stmt<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
-    alt((let_assignment, terminated(expr.map(Stmt::Expr), ';'))).parse_next(input)
+    let_assignment.parse_next(input)
 }
 
 fn stmts<'s>(input: &mut &'s str) -> PResult<Vec<Stmt<'s>>> {
@@ -219,7 +231,7 @@ fn stmts<'s>(input: &mut &'s str) -> PResult<Vec<Stmt<'s>>> {
 }
 
 fn main() {
-    let mut input = include_str!("../samples/river.spae"); // TODO: actually take input
+    let mut input = include_str!("../samples/min.spae"); // TODO: actually take input
     let output = stmts.parse_next(&mut input).unwrap();
     println!("{input}\n------\n{output:#?}");
 }
@@ -285,6 +297,14 @@ mod tests {
         };
     }
 
+    macro_rules! prefix {
+        ($($prefix:ident)*: $val:expr) => {
+            vec![
+                $( PrefixSymbol::$prefix, )*
+            ].into_iter().rfold($val, |val, symbol| Expr::Prefix(symbol, Box::new(val)))
+        };
+    }
+
     mod ident {
         use super::*;
         param! {
@@ -306,6 +326,8 @@ mod tests {
             basic:          "[l, n]"    => Some(list![ident!(l), ident!(n)]),
             spaces:         "[ l, n ]"  => Some(list![ident!(l), ident!(n)]),
             trailing_comma: "[ l, n, ]" => Some(list![ident!(l), ident!(n)]),
+            trailing_newline: "[ l, n,\n]" => Some(list![ident!(l), ident!(n)]),
+            evil:           "[\n\tl\n,\nn,\t]" => Some(list![ident!(l), ident!(n)]),
         }
     }
 
@@ -331,7 +353,20 @@ mod tests {
             left_to_right: "a + b - c"     => Some(infix!(infix!(ident!(a), + ident!(b)), - ident!(c))),
             nesting:       "a + b > b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), > infix!(ident!(b), - ident!(c)))),
             description:   "a : ``an a``"  => Some(desc!(ident!(a);s "an a")),
-            desc_binding:  "`a`:`b`+`c`:`d`" => Some(infix!(desc!(Expr::String("a");s "b"),+desc!(Expr::String("c");s "d")))
+            desc_binding:  "`a`:`b`+`c`:`d`" => Some(infix!(desc!(Expr::String("a");s "b"),+desc!(Expr::String("c");s "d"))),
+
+            prefix: "one a" => Some(prefix!(One: ident!(a))),
+            prefixes: "maybe one a" => Some(prefix!(Maybe One: ident!(a))),
+
+            ex1: "`focus-output`:`details` > one cardinal > {string}: `name`" => Some(
+                infix!(
+                    desc!(Expr::String("focus-output");s "details"),
+                    > infix!(
+                        prefix!(One: ident!(cardinal)),
+                        > desc!(Expr::Directive("string");s "name")
+                    )
+                )
+            ),
         }
     }
 

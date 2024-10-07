@@ -1,6 +1,1 @@
-let cardinal = [
-    `up`,
-    `down`,
-];
-
-let cmd = `cmd` > one cardinal;
+let focus-output = `focus-output`:`details` > one cardinal > {string}: `name`;
