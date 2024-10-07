@@ -303,10 +303,10 @@ mod tests {
         use super::*;
         param! {
             |input| finite_expr.parse(input).ok();
-            description_list: "[a:b, c:`words`]" => Some(list![desc!(ident!(a); ident!(b)), desc!(ident!(c);s "words")]),
-            directive: "{{{{word}}}}" => Some(Expr::Directive("word")),
+            description_list:    "[a:b, c:`words`]"               => Some(list![desc!(ident!(a); ident!(b)), desc!(ident!(c);s "words")]),
+            directive:           "{{{{word}}}}"                   => Some(Expr::Directive("word")),
             described_directive: "{string}: `name of the person`" => Some(desc!(Expr::Directive("string");s "name of the person")),
-            described_list: "[ a, b ]: `a and b`" => Some(desc!(list![ident!(a), ident!(b)];s "a and b"))
+            described_list:      "[ a, b ]: `a and b`"            => Some(desc!(list![ident!(a), ident!(b)];s "a and b"))
         }
     }
 
@@ -314,12 +314,12 @@ mod tests {
         use super::*;
         param! {
             |input| expr.parse(input).ok();
-            concat: "a + b" => Some(infix!(ident!(a), + ident!(b))),
-            set_minus: "a - b" => Some(infix!(ident!(a), - ident!(b))),
-            dependent: "a > b" => Some(infix!(ident!(a), > ident!(b))),
-            left_to_right: "a + b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), - ident!(c))),
-            nesting: "a + b > b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), > infix!(ident!(b), - ident!(c)))),
-            description: "a : ``an a``" => Some(desc!(ident!(a);s "an a")),
+            concat:        "a + b"         => Some(infix!(ident!(a), + ident!(b))),
+            set_minus:     "a - b"         => Some(infix!(ident!(a), - ident!(b))),
+            dependent:     "a > b"         => Some(infix!(ident!(a), > ident!(b))),
+            left_to_right: "a + b - c"     => Some(infix!(infix!(ident!(a), + ident!(b)), - ident!(c))),
+            nesting:       "a + b > b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), > infix!(ident!(b), - ident!(c)))),
+            description:   "a : ``an a``"  => Some(desc!(ident!(a);s "an a")),
         }
     }
 
@@ -327,7 +327,7 @@ mod tests {
         use super::*;
         param! {
             |input| stmts.parse(input).ok();
-            let_assignment: "let a = b;" => Some(vec![s_let!(a = ident!(b))]),
+            let_assignment: "let a = b;"     => Some(vec![s_let!(a = ident!(b))]),
             let_dependence: "let a = b > c;" => Some(vec![s_let!(a = infix!(ident!(b), > ident!(c)))]),
         }
     }
