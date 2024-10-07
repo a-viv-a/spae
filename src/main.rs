@@ -6,7 +6,6 @@ use winnow::stream::AsChar;
 use winnow::token::{one_of, take, take_until, take_while};
 
 type Ident<'s> = &'s str;
-type Str<'s> = &'s str;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum InfixSymbol {
@@ -33,7 +32,7 @@ enum Type {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum Expr<'s> {
-    String(Str<'s>),
+    String(&'s str),
     Ident(Ident<'s>),
     List(List<'s>),
     Prefix(PrefixSymbol, Box<Expr<'s>>),
@@ -122,21 +121,20 @@ fn ident_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     ident.map(Expr::Ident).parse_next(input)
 }
 
-fn string<'s>(input: &mut &'s str) -> PResult<Str<'s>> {
+fn string<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     let open_grave = take_while(1.., '`').parse_next(input)?;
-    let string = take_until(0.., open_grave).parse_next(input)?;
+    let string = take_until(0.., open_grave)
+        .parse_next(input)
+        .map(Expr::String)?;
     take(open_grave.len()).void().parse_next(input)?;
     return Ok(string);
-}
-fn string_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    string.parse_next(input).map(Expr::String)
 }
 
 fn described<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     separated_pair(
-        alt((ident_expr, string_expr)),
+        alt((ident_expr, string)),
         ws(':'),
-        alt((ident_expr, string_expr)),
+        alt((ident_expr, string)),
     )
     .context(StrContext::Label("described value"))
     .parse_next(input)
@@ -152,7 +150,7 @@ fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 
 fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     // TODO: don't waste work matching ident and string twice bc of alt
-    ws(alt((described, ident_expr, string_expr, list)))
+    ws(alt((described, ident_expr, string, list)))
         .context(StrContext::Label("finite expr"))
         .parse_next(input)
 }
