@@ -39,7 +39,8 @@ enum Expr<'s> {
     Prefix(PrefixSymbol, Box<Expr<'s>>),
     Infix(Box<Expr<'s>>, InfixSymbol, Box<Expr<'s>>),
     Type(Type),
-    Described(Box<Expr<'s>>, Str<'s>),
+    // TODO: limit types of descriptions that are legal
+    Described(Box<Expr<'s>>, Box<Expr<'s>>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -132,10 +133,14 @@ fn string_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn described<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    separated_pair(alt((ident_expr, string_expr)), ws(':'), string)
-        .context(StrContext::Label("described value"))
-        .parse_next(input)
-        .map(|(expr, description)| Expr::Described(Box::new(expr), description))
+    separated_pair(
+        alt((ident_expr, string_expr)),
+        ws(':'),
+        alt((ident_expr, string_expr)),
+    )
+    .context(StrContext::Label("described value"))
+    .parse_next(input)
+    .map(|(expr, description)| Expr::Described(Box::new(expr), Box::new(description)))
 }
 
 fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
@@ -244,8 +249,11 @@ mod tests {
         };
     }
     macro_rules! desc {
+        ($expr:expr;s $desc:expr) => {
+            Expr::Described(Box::new($expr), Box::new(Expr::String($desc)))
+        };
         ($expr:expr; $desc:expr) => {
-            Expr::Described(Box::new($expr), $desc)
+            Expr::Described(Box::new($expr), Box::new($desc))
         };
     }
 
@@ -291,6 +299,14 @@ mod tests {
         }
     }
 
+    mod finite_expr {
+        use super::*;
+        param! {
+            |input| finite_expr.parse(input).ok();
+            description_list: "[a:b, c:`words`]" => Some(list![desc!(ident!(a); ident!(b)), desc!(ident!(c);s "words")])
+        }
+    }
+
     mod expr {
         use super::*;
         param! {
@@ -300,7 +316,7 @@ mod tests {
             dependent: "a > b" => Some(infix!(ident!(a), > ident!(b))),
             left_to_right: "a + b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), - ident!(c))),
             nesting: "a + b > b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), > infix!(ident!(b), - ident!(c)))),
-            description: "a : ``an a``" => Some(desc!(ident!(a); "an a")),
+            description: "a : ``an a``" => Some(desc!(ident!(a);s "an a")),
         }
     }
 
