@@ -1,5 +1,5 @@
 use winnow::ascii::multispace0;
-use winnow::combinator::{alt, delimited, opt, repeat, separated_pair, terminated};
+use winnow::combinator::{alt, delimited, opt, preceded, repeat, separated_pair, terminated};
 use winnow::error::{ParserError, StrContext};
 use winnow::prelude::*;
 use winnow::stream::AsChar;
@@ -131,16 +131,16 @@ fn directive<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     return Ok(string);
 }
 
-fn described<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    separated_pair(
-        alt((ident_expr, string)),
-        ws(':'),
-        alt((ident_expr, string)),
-    )
-    .context(StrContext::Label("described value"))
-    .parse_next(input)
-    .map(|(expr, description)| Expr::Described(Box::new(expr), Box::new(description)))
-}
+// fn described<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+//     separated_pair(
+//         alt((ident_expr, string)),
+//         ws(':'),
+//         alt((ident_expr, string)),
+//     )
+//     .context(StrContext::Label("described value"))
+//     .parse_next(input)
+//     .map(|(expr, description)| Expr::Described(Box::new(expr), Box::new(description)))
+// }
 
 fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     delimited('[', repeat(0.., terminated(expr, ws(opt(',')))), ']')
@@ -150,11 +150,18 @@ fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    // TODO: don't waste work matching ident and string twice bc of alt
-    // TODO: support describing lists
-    ws(alt((described, ident_expr, string, list, directive)))
+    let expr = ws(alt((ident_expr, string, list, directive)))
         .context(StrContext::Label("finite expr"))
-        .parse_next(input)
+        .parse_next(input)?;
+
+    // check for description, which binds stronger than any other infix operator
+    if let Some(description) = opt(preceded(ws(':'), alt((string, ident_expr))))
+        .context(StrContext::Label("description"))
+        .parse_next(input)?
+    {
+        return Ok(Expr::Described(Box::new(expr), Box::new(description)));
+    }
+    Ok(expr)
 }
 
 fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
@@ -306,6 +313,7 @@ mod tests {
             description_list:    "[a:b, c:`words`]"               => Some(list![desc!(ident!(a); ident!(b)), desc!(ident!(c);s "words")]),
             directive:           "{{{{word}}}}"                   => Some(Expr::Directive("word")),
             described_directive: "{string}: `name of the person`" => Some(desc!(Expr::Directive("string");s "name of the person")),
+            // this is probably not allowed by the compiler but it will be caught later, and some compiler may allow
             described_list:      "[ a, b ]: `a and b`"            => Some(desc!(list![ident!(a), ident!(b)];s "a and b"))
         }
     }
@@ -314,12 +322,13 @@ mod tests {
         use super::*;
         param! {
             |input| expr.parse(input).ok();
-            concat:        "a + b"         => Some(infix!(ident!(a), + ident!(b))),
-            set_minus:     "a - b"         => Some(infix!(ident!(a), - ident!(b))),
-            dependent:     "a > b"         => Some(infix!(ident!(a), > ident!(b))),
+            concat:        "a + b" => Some(infix!(ident!(a), + ident!(b))),
+            set_minus:     "a - b" => Some(infix!(ident!(a), - ident!(b))),
+            dependent:     "a > b" => Some(infix!(ident!(a), > ident!(b))),
             left_to_right: "a + b - c"     => Some(infix!(infix!(ident!(a), + ident!(b)), - ident!(c))),
             nesting:       "a + b > b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), > infix!(ident!(b), - ident!(c)))),
             description:   "a : ``an a``"  => Some(desc!(ident!(a);s "an a")),
+            desc_binding:  "`a`:`b`+`c`:`d`" => Some(infix!(desc!(Expr::String("a");s "b"),+desc!(Expr::String("c");s "d")))
         }
     }
 
