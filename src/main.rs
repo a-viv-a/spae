@@ -1,6 +1,9 @@
 use parse::stmts;
 use winnow::Parser;
 
+mod ast;
+mod ast_macros;
+mod lower;
 mod parse;
 
 fn main() {

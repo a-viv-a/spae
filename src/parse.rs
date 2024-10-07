@@ -1,46 +1,10 @@
+use crate::ast::*;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, delimited, opt, preceded, repeat, terminated};
 use winnow::error::{ParserError, StrContext};
 use winnow::prelude::*;
 use winnow::stream::AsChar;
 use winnow::token::{take, take_until, take_while};
-
-pub type Ident<'s> = &'s str;
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum InfixSymbol {
-    Dependent,
-    Concat,
-    SetMinus,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum PrefixSymbol {
-    Maybe,
-    Require,
-    One,
-    Some,
-    All,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Expr<'s> {
-    String(&'s str),
-    Directive(&'s str),
-    Ident(Ident<'s>),
-    List(List<'s>),
-    Prefix(PrefixSymbol, Box<Expr<'s>>),
-    Infix(Box<Expr<'s>>, InfixSymbol, Box<Expr<'s>>),
-    Described(Box<Expr<'s>>, Box<Expr<'s>>),
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum Stmt<'s> {
-    Let(Ident<'s>, Expr<'s>),
-    // Expr(Expr<'s>),
-}
-
-pub type List<'s> = Vec<Expr<'s>>;
 
 fn unpack<L, R, T>(f: impl FnOnce(L, R) -> T) -> impl FnOnce((L, R)) -> T {
     |(l, r)| f(l, r)
@@ -227,71 +191,7 @@ pub fn stmts<'s>(input: &mut &'s str) -> PResult<Vec<Stmt<'s>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    macro_rules! param {
-        ($transform:expr;
-            $($name:ident: $input:expr => $expected:expr),* $(,)?) => {
-        $(
-            #[test]
-            fn $name() {
-                let input = $input;
-                dbg!(input);
-                let actual = $transform($input);
-                let expected = $expected;
-                dbg!(&actual, &expected);
-                pretty_assertions::assert_eq!(actual, expected);
-            }
-        )*
-        }
-    }
-
-    macro_rules! list {
-        ($($item:expr),* $(,)?) => {
-            Expr::List(vec![
-                $($item,)*
-            ])
-        };
-    }
-
-    macro_rules! ident {
-        ($ident:ident) => {
-            Expr::Ident(stringify!($ident))
-        };
-    }
-    macro_rules! desc {
-        ($expr:expr;s $desc:expr) => {
-            Expr::Described(Box::new($expr), Box::new(Expr::String($desc)))
-        };
-        ($expr:expr; $desc:expr) => {
-            Expr::Described(Box::new($expr), Box::new($desc))
-        };
-    }
-
-    macro_rules! s_let {
-        ($ident:ident = $val:expr) => {
-            Stmt::Let(stringify!($ident), $val)
-        };
-    }
-
-    macro_rules! infix {
-        ($lhs:expr, + $rhs:expr) => {
-            Expr::Infix(Box::new($lhs), InfixSymbol::Concat, Box::new($rhs))
-        };
-        ($lhs:expr, - $rhs:expr) => {
-            Expr::Infix(Box::new($lhs), InfixSymbol::SetMinus, Box::new($rhs))
-        };
-        ($lhs:expr, > $rhs:expr) => {
-            Expr::Infix(Box::new($lhs), InfixSymbol::Dependent, Box::new($rhs))
-        };
-    }
-
-    macro_rules! prefix {
-        ($($prefix:ident)*: $val:expr) => {
-            vec![
-                $( PrefixSymbol::$prefix, )*
-            ].into_iter().rfold($val, |val, symbol| Expr::Prefix(symbol, Box::new(val)))
-        };
-    }
+    use crate::ast_macros::*;
 
     mod ident {
         use super::*;
