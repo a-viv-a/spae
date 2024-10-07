@@ -23,22 +23,13 @@ enum PrefixSymbol {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-enum Type {
-    String,
-    Number,
-    Range,
-    File,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
 enum Expr<'s> {
     String(&'s str),
+    Directive(&'s str),
     Ident(Ident<'s>),
     List(List<'s>),
     Prefix(PrefixSymbol, Box<Expr<'s>>),
     Infix(Box<Expr<'s>>, InfixSymbol, Box<Expr<'s>>),
-    Type(Type),
-    // TODO: limit types of descriptions that are legal
     Described(Box<Expr<'s>>, Box<Expr<'s>>),
 }
 
@@ -122,11 +113,21 @@ fn ident_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn string<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    let open_grave = take_while(1.., '`').parse_next(input)?;
-    let string = take_until(0.., open_grave)
+    let open_graves = take_while(1.., '`').parse_next(input)?;
+    let string = take_until(0.., open_graves)
         .parse_next(input)
         .map(Expr::String)?;
-    take(open_grave.len()).void().parse_next(input)?;
+    take(open_graves.len()).void().parse_next(input)?;
+    return Ok(string);
+}
+
+fn directive<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+    let open_braces = take_while(1.., '{').parse_next(input)?;
+    let close_braces = "}".repeat(open_braces.len());
+    let string = take_until(0.., close_braces.as_str())
+        .parse_next(input)
+        .map(Expr::Directive)?;
+    take(close_braces.len()).void().parse_next(input)?;
     return Ok(string);
 }
 
@@ -150,7 +151,8 @@ fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 
 fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     // TODO: don't waste work matching ident and string twice bc of alt
-    ws(alt((described, ident_expr, string, list)))
+    // TODO: support describing lists
+    ws(alt((described, ident_expr, string, list, directive)))
         .context(StrContext::Label("finite expr"))
         .parse_next(input)
 }
@@ -301,7 +303,10 @@ mod tests {
         use super::*;
         param! {
             |input| finite_expr.parse(input).ok();
-            description_list: "[a:b, c:`words`]" => Some(list![desc!(ident!(a); ident!(b)), desc!(ident!(c);s "words")])
+            description_list: "[a:b, c:`words`]" => Some(list![desc!(ident!(a); ident!(b)), desc!(ident!(c);s "words")]),
+            directive: "{{{{word}}}}" => Some(Expr::Directive("word")),
+            described_directive: "{string}: `name of the person`" => Some(desc!(Expr::Directive("string");s "name of the person")),
+            described_list: "[ a, b ]: `a and b`" => Some(desc!(list![ident!(a), ident!(b)];s "a and b"))
         }
     }
 
