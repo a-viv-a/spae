@@ -6,6 +6,7 @@ use winnow::stream::AsChar;
 use winnow::token::{one_of, take, take_until, take_while};
 
 type Ident<'s> = &'s str;
+type Str<'s> = &'s str;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum InfixSymbol {
@@ -32,12 +33,13 @@ enum Type {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum Expr<'s> {
-    String(&'s str),
+    String(Str<'s>),
     Ident(Ident<'s>),
     List(List<'s>),
     Prefix(PrefixSymbol, Box<Expr<'s>>),
     Infix(Box<Expr<'s>>, InfixSymbol, Box<Expr<'s>>),
-    Type(&'s str),
+    Type(Type),
+    Described(Box<Expr<'s>>, Str<'s>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -115,11 +117,25 @@ fn ident<'s>(input: &mut &'s str) -> PResult<Ident<'s>> {
         .parse_next(input)
 }
 
-fn string<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+fn ident_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+    ident.map(Expr::Ident).parse_next(input)
+}
+
+fn string<'s>(input: &mut &'s str) -> PResult<Str<'s>> {
     let open_grave = take_while(1.., '`').parse_next(input)?;
-    let String = take_until(0.., open_grave).parse_next(input)?;
+    let string = take_until(0.., open_grave).parse_next(input)?;
     take(open_grave.len()).void().parse_next(input)?;
-    return Ok(Expr::String(String));
+    return Ok(string);
+}
+fn string_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+    string.parse_next(input).map(Expr::String)
+}
+
+fn described<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
+    separated_pair(alt((ident_expr, string_expr)), ws(':'), string)
+        .context(StrContext::Label("described value"))
+        .parse_next(input)
+        .map(|(expr, description)| Expr::Described(Box::new(expr), description))
 }
 
 fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
@@ -130,7 +146,8 @@ fn list<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
 }
 
 fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    ws(alt((ident.map(Expr::Ident), string, list)))
+    // TODO: don't waste work matching ident and string twice bc of alt
+    ws(alt((described, ident_expr, string_expr, list)))
         .context(StrContext::Label("finite expr"))
         .parse_next(input)
 }
@@ -226,6 +243,11 @@ mod tests {
             Expr::Ident(stringify!($ident))
         };
     }
+    macro_rules! desc {
+        ($expr:expr; $desc:expr) => {
+            Expr::Described(Box::new($expr), $desc)
+        };
+    }
 
     macro_rules! s_let {
         ($ident:ident = $val:expr) => {
@@ -278,6 +300,7 @@ mod tests {
             dependent: "a > b" => Some(infix!(ident!(a), > ident!(b))),
             left_to_right: "a + b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), - ident!(c))),
             nesting: "a + b > b - c" => Some(infix!(infix!(ident!(a), + ident!(b)), > infix!(ident!(b), - ident!(c)))),
+            description: "a : ``an a``" => Some(desc!(ident!(a); "an a")),
         }
     }
 
