@@ -109,7 +109,7 @@ fn rtl_infix_symbol<'s>(input: &mut &'s str) -> PResult<InfixSymbol> {
 }
 
 fn prefix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
-    (alt((maybe, one, some)), expr)
+    (r_ws(alt((maybe, one, some))), expr)
         .context(StrContext::Label("prefix"))
         .parse_next(input)
         .map(|(prefix, expr)| Expr::Prefix(prefix, Box::new(expr)))
