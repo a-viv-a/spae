@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use crate::ast::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum ListAmount {
     One,
     Some,
@@ -11,7 +11,7 @@ pub enum ListAmount {
 }
 
 /// Lowered Abstract Syntax Tree
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum LASTNode<'s> {
     String(&'s str),
     Directive(&'s str),
@@ -131,20 +131,50 @@ fn lower_ast<'s>(
             )
         }
         Expr::Infix(lhs, infix, rhs) => {
-            match (*lhs, infix, *rhs) {
-                (Expr::List(mut lhs), InfixSymbol::Concat, Expr::List(rhs)) => {
-                    lhs.extend(rhs);
-                    lower_ast(Expr::List(lhs), idents, ctx)
-                }
+            // TODO: make this not suck
+            match (
+                lower_ast(*lhs, idents, ctx.clone()),
+                // TODO: avoid this clone
+                infix.clone(),
+                lower_ast(*rhs, idents, ctx),
+            ) {
+                (
+                    (
+                        LASTNode::Choice {
+                            from: mut lhs,
+                            amount,
+                            required,
+                        },
+                        _,
+                    ),
+                    InfixSymbol::Concat | InfixSymbol::SetMinus,
+                    (
+                        LASTNode::Choice {
+                            from: rhs,
+                            amount: _,
+                            required: _,
+                        },
+                        _,
+                    ),
+                ) => (
+                    LASTNode::Choice {
+                        from: match infix {
+                            InfixSymbol::SetMinus => {
+                                let rhs = rhs.into_iter().collect::<FxHashSet<LAST<'_>>>();
+                                lhs.into_iter().filter(|e| !rhs.contains(e)).collect()
+                            }
+                            InfixSymbol::Concat => {
+                                lhs.extend(rhs);
+                                lhs
+                            }
+                            InfixSymbol::Dependent => unreachable!(),
+                        },
+                        amount,
+                        required,
+                    },
+                    None,
+                ),
 
-                (Expr::List(lhs), InfixSymbol::SetMinus, Expr::List(rhs)) => {
-                    let rhs = rhs.into_iter().collect::<FxHashSet<Expr<'_>>>();
-                    lower_ast(
-                        Expr::List(lhs.into_iter().filter(|e| rhs.contains(e)).collect()),
-                        idents,
-                        ctx,
-                    )
-                }
                 (lhs, InfixSymbol::Concat | InfixSymbol::SetMinus, rhs) => {
                     // TODO: use proper spanned error, report type ect
                     panic!(
@@ -153,8 +183,8 @@ fn lower_ast<'s>(
                 }
                 (lhs, InfixSymbol::Dependent, rhs) => (
                     LASTNode::Dependant {
-                        when: Box::new(lower_ast(lhs, idents, ctx.clone())),
-                        then: Box::new(lower_ast(rhs, idents, ctx)),
+                        when: Box::new(lhs),
+                        then: Box::new(rhs),
                     },
                     None,
                 ),
