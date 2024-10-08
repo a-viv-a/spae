@@ -10,8 +10,8 @@ let direction = [
     `previous`,
 ] + cardinal;
 
-let focus-output = `focus-output`:`details` > direction > {string}: `name`;
-let focus-view = `focus-view` > maybe [`-skip-floating`] > one direction;
+let focus-output = `focus-output`:`details about this cmd` > direction > {string}: `name`;
+let focus-view = `focus-view` > maybe [`-skip-floating`] > direction;
 let move = `move` > cardinal > {number}: `delta`;
 let resize = `resize` > [ `horizontal`, `vertical` ] > {number}: `delta`;
 let snap = `snap` > direction;

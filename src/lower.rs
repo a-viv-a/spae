@@ -80,7 +80,7 @@ impl<'s> LAST<'s> {
                     .collect::<String>()
             };
         }
-        match &self.node {
+        let rep = match &self.node {
             LASTNode::String(s) => format!("`{s}`"),
             LASTNode::Directive(d) => format!("{{{d}}}"),
             LASTNode::Choice(Choice {
@@ -111,6 +111,10 @@ impl<'s> LAST<'s> {
             LASTNode::Dependant { when, then } => {
                 format!("{} >\n{}", when.format(), pad!(then.format()))
             }
+        };
+        match self.description {
+            Some(str) => format!("{rep}\n: `{str}`"),
+            None => rep,
         }
     }
 }
