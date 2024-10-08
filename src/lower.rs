@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use crate::ast::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ListAmount {
     One,
     Some,
@@ -12,7 +12,7 @@ pub enum ListAmount {
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Choice<'s> {
-    // false=Maybe, true=Required
+    // false=Maybe, true=Require
     required: bool,
     amount: ListAmount,
     from: Vec<LAST<'s>>,
@@ -69,6 +69,48 @@ impl<'s> LAST<'s> {
         LAST {
             node,
             description: Some(description),
+        }
+    }
+
+    pub fn format(&self) -> String {
+        macro_rules! pad {
+            ($s:expr) => {
+                $s.split('\n')
+                    .map(|l| format!("    {l}\n"))
+                    .collect::<String>()
+            };
+        }
+        match &self.node {
+            LASTNode::String(s) => format!("`{s}`"),
+            LASTNode::Directive(d) => format!("{{{d}}}"),
+            LASTNode::Choice(Choice {
+                required,
+                amount,
+                from,
+            }) => {
+                let required = match required {
+                    true => "require ",
+                    false => "maybe ",
+                };
+
+                let amount = match amount {
+                    ListAmount::Some => "some ",
+                    ListAmount::One => "one ",
+                    ListAmount::All => "all ",
+                };
+
+                format!(
+                    "{required}{amount}[\n{}]",
+                    pad!(from
+                        .iter()
+                        .map(|e| format!("{},\n", e.format().trim()))
+                        .collect::<String>()
+                        .trim())
+                )
+            }
+            LASTNode::Dependant { when, then } => {
+                format!("{} >\n{}", when.format(), pad!(then.format()))
+            }
         }
     }
 }

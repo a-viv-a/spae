@@ -12,5 +12,5 @@ fn main() {
     let output = stmts.parse_next(&mut input).unwrap();
     println!("{input}\n------\n{output:#?}\n------\n");
     let lowered = lower(output.clone());
-    println!("{lowered:#?}");
+    println!("{}", lowered.format());
 }
