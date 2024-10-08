@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use crate::ast::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
+#[derive(Debug, Clone)]
 pub enum ListAmount {
     One,
     Some,
@@ -10,6 +11,7 @@ pub enum ListAmount {
 }
 
 /// Lowered Abstract Syntax Tree
+#[derive(Debug, Clone)]
 pub enum LASTNode<'s> {
     String(&'s str),
     Directive(&'s str),
@@ -26,7 +28,40 @@ pub enum LASTNode<'s> {
 }
 pub type LAST<'s> = (LASTNode<'s>, Option<&'s str>);
 
-pub fn lower<'s>(stmts: Vec<Stmt<'s>>) {
+#[derive(Debug, Clone)]
+struct Ctx<'s> {
+    seen: FxHashSet<&'s str>,
+    required: bool,
+    amount: ListAmount,
+}
+
+impl<'s> Ctx<'s> {
+    fn new() -> Ctx<'s> {
+        Ctx {
+            seen: FxHashSet::default(),
+            required: true,
+            amount: ListAmount::One,
+        }
+    }
+
+    fn visit(mut self, ident: &'s str) -> Ctx<'s> {
+        self.seen.insert(ident);
+        self
+    }
+
+    fn prefix(mut self, symbol: PrefixSymbol) -> Ctx<'s> {
+        match symbol {
+            PrefixSymbol::Maybe => self.required = false,
+            PrefixSymbol::Require => self.required = true,
+            PrefixSymbol::One => self.amount = ListAmount::One,
+            PrefixSymbol::Some => self.amount = ListAmount::Some,
+            PrefixSymbol::All => self.amount = ListAmount::All,
+        }
+        self
+    }
+}
+
+pub fn lower<'s>(stmts: Vec<Stmt<'s>>) -> LAST<'s> {
     let mut stmts = stmts;
     // TODO: add some syntax for figuring out the entrypoint
     // TODO: replace expect with proper syntax errors
@@ -42,16 +77,33 @@ pub fn lower<'s>(stmts: Vec<Stmt<'s>>) {
 
     let Stmt::Let(name, entrypoint) = last_assignment;
 
-    let ast = lower_ast(entrypoint, &RefCell::new(idents));
+    let ast = lower_ast(entrypoint, &RefCell::new(idents), Ctx::new());
+    return ast;
 }
 
-fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>) -> LAST<'s> {
+fn lower_ast<'s>(
+    expr: Expr<'s>,
+    idents: &RefCell<FxHashMap<&str, Expr<'s>>>,
+    ctx: Ctx,
+) -> LAST<'s> {
     match expr {
         Expr::String(s) => (LASTNode::String(s), None),
         Expr::Directive(d) => (LASTNode::Directive(d), None),
+        Expr::Prefix(symbol, expr) => lower_ast(*expr, idents, ctx.prefix(symbol)),
+        Expr::List(list) => (
+            LASTNode::Choice {
+                from: list
+                    .into_iter()
+                    .map(|expr| lower_ast(expr, idents, ctx.clone()))
+                    .collect(),
+                amount: ctx.amount,
+                required: ctx.required,
+            },
+            None,
+        ),
         Expr::Described(expr, description) => {
-            let l_ast = lower_ast(*expr, idents).0;
-            let description = lower_ast(*description, idents);
+            let l_ast = lower_ast(*expr, idents, ctx.clone()).0;
+            let description = lower_ast(*description, idents, ctx);
 
             if let LASTNode::String(desc_str) = description.0 {
                 if description.1.is_some() {
@@ -75,13 +127,14 @@ fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>) ->
                     .expect("ident is defined")
                     .clone(),
                 idents,
+                ctx.visit(ident),
             )
         }
         Expr::Infix(lhs, infix, rhs) => {
             match (*lhs, infix, *rhs) {
                 (Expr::List(mut lhs), InfixSymbol::Concat, Expr::List(rhs)) => {
                     lhs.extend(rhs);
-                    lower_ast(Expr::List(lhs), idents)
+                    lower_ast(Expr::List(lhs), idents, ctx)
                 }
 
                 (Expr::List(lhs), InfixSymbol::SetMinus, Expr::List(rhs)) => {
@@ -89,16 +142,19 @@ fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>) ->
                     lower_ast(
                         Expr::List(lhs.into_iter().filter(|e| rhs.contains(e)).collect()),
                         idents,
+                        ctx,
                     )
                 }
-                (_lhs, InfixSymbol::Concat | InfixSymbol::SetMinus, _rhs) => {
+                (lhs, InfixSymbol::Concat | InfixSymbol::SetMinus, rhs) => {
                     // TODO: use proper spanned error, report type ect
-                    panic!("list infix operators should only be used on lists")
+                    panic!(
+                        "list infix operators should only be used on lists, found {lhs:?} and {rhs:?}"
+                    )
                 }
-                (lhs, infix, rhs) => (
+                (lhs, InfixSymbol::Dependent, rhs) => (
                     LASTNode::Dependant {
-                        when: Box::new(lower_ast(lhs, idents)),
-                        then: Box::new(lower_ast(rhs, idents)),
+                        when: Box::new(lower_ast(lhs, idents, ctx.clone())),
+                        then: Box::new(lower_ast(rhs, idents, ctx)),
                     },
                     None,
                 ),
