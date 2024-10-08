@@ -10,14 +10,14 @@ let direction = [
     `previous`,
 ] + cardinal;
 
-let focus-output = `focus-output`:`details` > one direction > {string}: `name`;
+let focus-output = `focus-output`:`details` > direction > {string}: `name`;
 let focus-view = `focus-view` > maybe [`-skip-floating`] > one direction;
-let move = `move` > one cardinal > Number: `delta`;
-let resize = `resize` > one [ `horizontal`, `vertical` ] > {number}: `delta`;
-let snap = `snap` > one direction;
+let move = `move` > cardinal > {number}: `delta`;
+let resize = `resize` > [ `horizontal`, `vertical` ] > {number}: `delta`;
+let snap = `snap` > direction;
 
-let riverctl = one [
-    maybe one [
+let riverctl = [
+    [
     `-h`,
     `-version`,
 ], [

@@ -16,10 +16,10 @@ pub enum LASTNode<'s> {
     String(&'s str),
     Directive(&'s str),
     Choice {
-        from: Vec<LAST<'s>>,
         // false=Maybe, true=Required
         required: bool,
         amount: ListAmount,
+        from: Vec<LAST<'s>>,
     },
     Dependant {
         when: Box<LAST<'s>>,
@@ -124,7 +124,7 @@ fn lower_ast<'s>(
                     .get(ident)
                     // TODO: check for cycle! non turing complete and immutable so any recurrence is a cycle
                     // TODO: replace ident with value as optimization? need to handle differing context
-                    .expect("ident is defined")
+                    .expect(&format!("ident {ident} is defined"))
                     .clone(),
                 idents,
                 ctx.visit(ident),
