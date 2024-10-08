@@ -10,17 +10,41 @@ pub enum ListAmount {
     All,
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Choice<'s> {
+    // false=Maybe, true=Required
+    required: bool,
+    amount: ListAmount,
+    from: Vec<LAST<'s>>,
+}
+
+impl<'s> Choice<'s> {
+    fn apply(mut self, symbol: PrefixSymbol) -> Choice<'s> {
+        match symbol {
+            PrefixSymbol::Maybe => self.required = false,
+            PrefixSymbol::Require => self.required = true,
+            PrefixSymbol::One => self.amount = ListAmount::One,
+            PrefixSymbol::Some => self.amount = ListAmount::Some,
+            PrefixSymbol::All => self.amount = ListAmount::All,
+        }
+        self
+    }
+
+    fn default(from: Vec<LAST<'s>>) -> Choice<'s> {
+        Choice {
+            from,
+            required: true,
+            amount: ListAmount::One,
+        }
+    }
+}
+
 /// Lowered Abstract Syntax Tree
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum LASTNode<'s> {
     String(&'s str),
     Directive(&'s str),
-    Choice {
-        // false=Maybe, true=Required
-        required: bool,
-        amount: ListAmount,
-        from: Vec<LAST<'s>>,
-    },
+    Choice(Choice<'s>),
     Dependant {
         when: Box<LAST<'s>>,
         then: Box<LAST<'s>>,
@@ -31,32 +55,17 @@ pub type LAST<'s> = (LASTNode<'s>, Option<&'s str>);
 #[derive(Debug, Clone)]
 struct Ctx<'s> {
     seen: FxHashSet<&'s str>,
-    required: bool,
-    amount: ListAmount,
 }
 
 impl<'s> Ctx<'s> {
     fn new() -> Ctx<'s> {
         Ctx {
             seen: FxHashSet::default(),
-            required: true,
-            amount: ListAmount::One,
         }
     }
 
     fn visit(mut self, ident: &'s str) -> Ctx<'s> {
         self.seen.insert(ident);
-        self
-    }
-
-    fn prefix(mut self, symbol: PrefixSymbol) -> Ctx<'s> {
-        match symbol {
-            PrefixSymbol::Maybe => self.required = false,
-            PrefixSymbol::Require => self.required = true,
-            PrefixSymbol::One => self.amount = ListAmount::One,
-            PrefixSymbol::Some => self.amount = ListAmount::Some,
-            PrefixSymbol::All => self.amount = ListAmount::All,
-        }
         self
     }
 }
@@ -89,16 +98,26 @@ fn lower_ast<'s>(
     match expr {
         Expr::String(s) => (LASTNode::String(s), None),
         Expr::Directive(d) => (LASTNode::Directive(d), None),
-        Expr::Prefix(symbol, expr) => lower_ast(*expr, idents, ctx.prefix(symbol)),
+        Expr::Prefix(symbol, expr) => {
+            let (choice, description) = match lower_ast(*expr, idents, ctx) {
+                (LASTNode::Choice(choice), description) => (choice, description),
+                (expr, description) => (
+                    Choice {
+                        required: true,
+                        amount: ListAmount::One,
+                        from: vec![(expr, description)],
+                    },
+                    description,
+                ),
+            };
+            (LASTNode::Choice(choice.apply(symbol)), description)
+        }
         Expr::List(list) => (
-            LASTNode::Choice {
-                from: list
-                    .into_iter()
+            LASTNode::Choice(Choice::default(
+                list.into_iter()
                     .map(|expr| lower_ast(expr, idents, ctx.clone()))
                     .collect(),
-                amount: ctx.amount,
-                required: ctx.required,
-            },
+            )),
             None,
         ),
         Expr::Described(expr, description) => {
@@ -139,41 +158,24 @@ fn lower_ast<'s>(
                 lower_ast(*rhs, idents, ctx),
             ) {
                 (
-                    (
-                        LASTNode::Choice {
-                            from: mut lhs,
-                            amount,
-                            required,
-                        },
-                        _,
-                    ),
+                    (LASTNode::Choice(mut lhs), _),
                     InfixSymbol::Concat | InfixSymbol::SetMinus,
-                    (
-                        LASTNode::Choice {
-                            from: rhs,
-                            amount: _,
-                            required: _,
-                        },
-                        _,
-                    ),
-                ) => (
-                    LASTNode::Choice {
-                        from: match infix {
-                            InfixSymbol::SetMinus => {
-                                let rhs = rhs.into_iter().collect::<FxHashSet<LAST<'_>>>();
-                                lhs.into_iter().filter(|e| !rhs.contains(e)).collect()
-                            }
-                            InfixSymbol::Concat => {
-                                lhs.extend(rhs);
-                                lhs
-                            }
-                            InfixSymbol::Dependent => unreachable!(),
-                        },
-                        amount,
-                        required,
-                    },
-                    None,
-                ),
+                    (LASTNode::Choice(rhs), _),
+                ) => {
+                    lhs.from = match infix {
+                        InfixSymbol::SetMinus => {
+                            let rhs = rhs.from.into_iter().collect::<FxHashSet<LAST<'_>>>();
+                            lhs.from.into_iter().filter(|e| !rhs.contains(e)).collect()
+                        }
+                        InfixSymbol::Concat => {
+                            lhs.from.extend(rhs.from);
+                            lhs.from
+                        }
+                        InfixSymbol::Dependent => unreachable!(),
+                    };
+
+                    (LASTNode::Choice(lhs), None)
+                }
 
                 (lhs, InfixSymbol::Concat | InfixSymbol::SetMinus, rhs) => {
                     // TODO: use proper spanned error, report type ect
