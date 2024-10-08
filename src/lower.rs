@@ -19,7 +19,7 @@ pub struct Choice<'s> {
 }
 
 impl<'s> Choice<'s> {
-    fn apply(mut self, symbol: PrefixSymbol) -> Choice<'s> {
+    fn apply(mut self, symbol: PrefixSymbol) -> Self {
         match symbol {
             PrefixSymbol::Maybe => self.required = false,
             PrefixSymbol::Require => self.required = true,
@@ -30,7 +30,7 @@ impl<'s> Choice<'s> {
         self
     }
 
-    fn default(from: Vec<LAST<'s>>) -> Choice<'s> {
+    fn default(from: Vec<LAST<'s>>) -> Self {
         Choice {
             from,
             required: true,
@@ -50,7 +50,28 @@ pub enum LASTNode<'s> {
         then: Box<LAST<'s>>,
     },
 }
-pub type LAST<'s> = (LASTNode<'s>, Option<&'s str>);
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct LAST<'s> {
+    node: LASTNode<'s>,
+    description: Option<&'s str>,
+}
+
+impl<'s> LAST<'s> {
+    fn new(node: LASTNode<'s>) -> Self {
+        LAST {
+            node,
+            description: None,
+        }
+    }
+
+    fn described(node: LASTNode<'s>, description: &'s str) -> Self {
+        LAST {
+            node,
+            description: Some(description),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 struct Ctx<'s> {
@@ -96,39 +117,43 @@ fn lower_ast<'s>(
     ctx: Ctx,
 ) -> LAST<'s> {
     match expr {
-        Expr::String(s) => (LASTNode::String(s), None),
-        Expr::Directive(d) => (LASTNode::Directive(d), None),
+        Expr::String(s) => LAST::new(LASTNode::String(s)),
+        Expr::Directive(d) => LAST::new(LASTNode::Directive(d)),
         Expr::Prefix(symbol, expr) => {
             let (choice, description) = match lower_ast(*expr, idents, ctx) {
-                (LASTNode::Choice(choice), description) => (choice, description),
-                (expr, description) => (
+                LAST {
+                    node: LASTNode::Choice(choice),
+                    description,
+                } => (choice, description),
+                node => (
                     Choice {
                         required: true,
                         amount: ListAmount::One,
-                        from: vec![(expr, description)],
+                        // peel the description off... worth reassessing
+                        from: vec![node],
                     },
-                    description,
+                    None,
                 ),
             };
-            (LASTNode::Choice(choice.apply(symbol)), description)
+            LAST {
+                node: LASTNode::Choice(choice.apply(symbol)),
+                description,
+            }
         }
-        Expr::List(list) => (
-            LASTNode::Choice(Choice::default(
-                list.into_iter()
-                    .map(|expr| lower_ast(expr, idents, ctx.clone()))
-                    .collect(),
-            )),
-            None,
-        ),
+        Expr::List(list) => LAST::new(LASTNode::Choice(Choice::default(
+            list.into_iter()
+                .map(|expr| lower_ast(expr, idents, ctx.clone()))
+                .collect(),
+        ))),
         Expr::Described(expr, description) => {
-            let l_ast = lower_ast(*expr, idents, ctx.clone()).0;
+            let l_ast = lower_ast(*expr, idents, ctx.clone()).node;
             let description = lower_ast(*description, idents, ctx);
 
-            if let LASTNode::String(desc_str) = description.0 {
-                if description.1.is_some() {
+            if let LASTNode::String(desc_str) = description.node {
+                if description.description.is_some() {
                     panic!("description can't have a description")
                 }
-                return (l_ast, Some(desc_str));
+                return LAST::described(l_ast, desc_str);
             } else {
                 panic!("description must reduce to a string")
             }
@@ -158,9 +183,15 @@ fn lower_ast<'s>(
                 lower_ast(*rhs, idents, ctx),
             ) {
                 (
-                    (LASTNode::Choice(mut lhs), _),
+                    LAST {
+                        node: LASTNode::Choice(mut lhs),
+                        description: _,
+                    },
                     InfixSymbol::Concat | InfixSymbol::SetMinus,
-                    (LASTNode::Choice(rhs), _),
+                    LAST {
+                        node: LASTNode::Choice(rhs),
+                        description: _,
+                    },
                 ) => {
                     lhs.from = match infix {
                         InfixSymbol::SetMinus => {
@@ -174,7 +205,7 @@ fn lower_ast<'s>(
                         InfixSymbol::Dependent => unreachable!(),
                     };
 
-                    (LASTNode::Choice(lhs), None)
+                    LAST::new(LASTNode::Choice(lhs))
                 }
 
                 (lhs, InfixSymbol::Concat | InfixSymbol::SetMinus, rhs) => {
@@ -183,13 +214,10 @@ fn lower_ast<'s>(
                         "list infix operators should only be used on lists, found {lhs:?} and {rhs:?}"
                     )
                 }
-                (lhs, InfixSymbol::Dependent, rhs) => (
-                    LASTNode::Dependant {
-                        when: Box::new(lhs),
-                        then: Box::new(rhs),
-                    },
-                    None,
-                ),
+                (lhs, InfixSymbol::Dependent, rhs) => LAST::new(LASTNode::Dependant {
+                    when: Box::new(lhs),
+                    then: Box::new(rhs),
+                }),
             }
         }
     }
