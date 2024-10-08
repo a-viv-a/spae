@@ -1,13 +1,13 @@
 pub type Ident<'s> = &'s str;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum InfixSymbol {
     Dependent,
     Concat,
     SetMinus,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum PrefixSymbol {
     Maybe,
     Require,
@@ -16,7 +16,7 @@ pub enum PrefixSymbol {
     All,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Expr<'s> {
     String(&'s str),
     Directive(&'s str),
@@ -27,7 +27,7 @@ pub enum Expr<'s> {
     Described(Box<Expr<'s>>, Box<Expr<'s>>),
 }
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub enum Stmt<'s> {
     Let(Ident<'s>, Expr<'s>),
     // Expr(Expr<'s>),
