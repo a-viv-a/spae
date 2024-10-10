@@ -1,8 +1,4 @@
-use std::{
-    fmt::Display,
-    fs,
-    process::{exit, ExitCode},
-};
+use std::{fmt::Display, fs, process::ExitCode};
 
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
