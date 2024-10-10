@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use crate::ast::*;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, delimited, opt, preceded, repeat, terminated};
@@ -78,10 +80,24 @@ fn prefix<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
         .map(|(prefix, expr)| Expr::Prefix(prefix, Box::new(expr)))
 }
 
+// there is no way this is the best solution...
+static IDENT_DESCRIPTION: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "a valid ident, a sequence of alphanumerics, '_' and '-', not one of {} which are reserved keywords or operators.",
+        ILLEGAL_IDENTS
+            .iter()
+            .map(|ident| format!("\"{ident}\""))
+            .collect::<Vec<String>>()
+            .join(", ")
+    )
+});
 fn ident<'s>(input: &mut &'s str) -> PResult<Ident<'s>> {
     take_while(1.., |c: char| c.is_alphanum() || c == '_' || c == '-')
         .verify(|ident| !ILLEGAL_IDENTS.contains(ident))
         .context(StrContext::Label("ident"))
+        .context(StrContext::Expected(
+            winnow::error::StrContextValue::Description(IDENT_DESCRIPTION.as_str()),
+        ))
         .parse_next(input)
 }
 
