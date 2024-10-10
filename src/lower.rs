@@ -151,7 +151,7 @@ pub fn lower<'s>(stmts: Vec<Stmt<'s>>) -> LAST<'s> {
         })
         .collect::<FxHashMap<Ident<'s>, Expr<'s>>>();
 
-    let Stmt::Let(name, entrypoint) = last_assignment;
+    let Stmt::Let(_name, entrypoint) = last_assignment;
 
     let ast = lower_ast(entrypoint, &RefCell::new(idents), Ctx::new());
     return ast;
