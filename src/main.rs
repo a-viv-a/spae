@@ -1,14 +1,20 @@
-use std::{fmt::Display, fs, process::ExitCode};
+use std::{error::Error, fmt::Display, fs, path::PathBuf, process::ExitCode};
 
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
+use compile::evaluate;
+use eyre::{Result, WrapErr};
 use lower::lower;
 use parse::stmts;
-use winnow::Parser as WinnowParse;
+use winnow::{
+    error::{ContextError, ParseError},
+    Parser as WinnowParse,
+};
 
 mod ast;
 #[cfg(test)]
 mod ast_macros;
+mod compile;
 mod lower;
 mod parse;
 
@@ -27,6 +33,13 @@ enum Command {
         /// The detail to show
         #[clap(long, short = 's', default_value_t = DebugDetail::Ast)]
         show: DebugDetail,
+    },
+    /// Compile a spae file
+    Compile {
+        /// The path of the spae file
+        path: Utf8PathBuf,
+        /// The path of the scm file to use to compile it
+        compiler_path: PathBuf,
     },
 }
 
@@ -49,12 +62,13 @@ impl Display for DebugDetail {
     }
 }
 
-fn main() -> ExitCode {
+fn main() -> Result<()> {
     let args = Args::parse();
     // let output = stmts.parse_next(&mut input).unwrap();
     // println!("{input}\n------\n{output:#?}\n------\n");
     // let lowered = lower(output.clone());
     // println!("{}", lowered.format());
+
     match args.command {
         Command::Debug { path, show } => {
             let file = fs::read_to_string(path).expect("valid path");
@@ -68,12 +82,24 @@ fn main() -> ExitCode {
                         println!("{}", lower(parsed).format());
                     }
                 },
-                Err(error) => {
-                    eprintln!("{error}");
-                    return ExitCode::FAILURE;
+                Err(err) => {
+                    eprintln!("{err}")
                 }
             }
         }
+        Command::Compile {
+            path,
+            compiler_path,
+        } => {
+            // let spae_file = fs::read_to_string(path).expect("valid path");
+            // let ast = stmts.parse(&*spae_file)?;
+            // let l_ast = lower(ast);
+            // evaluate(compiler_path, l_ast);
+        }
     }
-    return ExitCode::SUCCESS;
+    Ok(())
+}
+
+fn run_command<'a>(command: Command) -> Result<(), ParseError<&'a str, ContextError>> {
+    Ok(())
 }
