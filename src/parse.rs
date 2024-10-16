@@ -114,6 +114,7 @@ fn string<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
     let open_graves = take_while(1.., '`')
         .context(StrContext::Label("opening graves"))
         .parse_next(input)?;
+    // TODO: handle unclosed at least as good as directive
     let string = take_until(0.., open_graves)
         .context(StrContext::Label("string body"))
         .parse_next(input)
@@ -130,14 +131,21 @@ fn directive<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
         .context(StrContext::Label("opening braces"))
         .parse_next(input)?;
     let close_braces = "}".repeat(open_braces.len());
-    let string = take_until(0.., close_braces.as_str())
-        .context(StrContext::Label("directive body"))
-        .parse_next(input)
-        .map(Expr::Directive)?;
-    take(close_braces.len())
-        .context(StrContext::Label("closing braces"))
-        .void()
-        .parse_next(input)?;
+    let string = cut_err(
+        take_until(0.., close_braces.as_str())
+            .context(StrContext::Label("directive body"))
+            .context(StrContext::Expected(
+                winnow::error::StrContextValue::Description("closing brace(s)"),
+            )),
+    )
+    .parse_next(input)
+    .map(Expr::Directive)?;
+    cut_err(
+        take(close_braces.len())
+            .context(StrContext::Label("closing braces"))
+            .void(),
+    )
+    .parse_next(input)?;
     return Ok(string);
 }
 
