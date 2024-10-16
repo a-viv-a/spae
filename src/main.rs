@@ -1,11 +1,11 @@
 use std::{error::Error, fmt::Display, fs, path::PathBuf, process::ExitCode};
 
+use crate::parse::parse;
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 use compile::evaluate;
 use eyre::{Result, WrapErr};
 use lower::lower;
-use parse::stmts;
 use winnow::{
     error::{ContextError, ParseError},
     Parser as WinnowParse,
@@ -72,8 +72,7 @@ fn main() -> Result<()> {
     match args.command {
         Command::Debug { path, show } => {
             let file = fs::read_to_string(path).expect("valid path");
-            let parsed = stmts.parse(file.as_str());
-            match parsed {
+            match parse(file.as_str()) {
                 Ok(parsed) => match show {
                     DebugDetail::Ast => {
                         println!("{parsed:#?}");
@@ -82,9 +81,7 @@ fn main() -> Result<()> {
                         println!("{}", lower(parsed).format());
                     }
                 },
-                Err(err) => {
-                    eprintln!("{err}")
-                }
+                Err(err) => err.write_stderr().expect("no io issue"),
             }
         }
         Command::Compile {
@@ -92,7 +89,7 @@ fn main() -> Result<()> {
             compiler_path,
         } => {
             // let spae_file = fs::read_to_string(path).expect("valid path");
-            // let ast = stmts.parse(&*spae_file)?;
+            // let ast = parse(&*spae_file)?;
             // let l_ast = lower(ast);
             // evaluate(compiler_path, l_ast);
         }

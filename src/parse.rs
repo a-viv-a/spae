@@ -1,9 +1,14 @@
+use std::fmt::Debug;
+use std::io;
+use std::ops::Range;
 use std::sync::LazyLock;
 
 use crate::ast::*;
+use ariadne::{Color, ColorGenerator, Fmt, Label, LabelAttach, Report, ReportKind, Source};
+use eyre::Result;
 use winnow::ascii::multispace0;
 use winnow::combinator::{alt, delimited, opt, preceded, repeat, terminated};
-use winnow::error::{ParserError, StrContext};
+use winnow::error::{ContextError, ParseError, ParserError, StrContext};
 use winnow::prelude::*;
 use winnow::stream::AsChar;
 use winnow::token::{take, take_until, take_while};
@@ -200,8 +205,73 @@ fn stmt<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
     let_assignment.parse_next(input)
 }
 
-pub fn stmts<'s>(input: &mut &'s str) -> PResult<Vec<Stmt<'s>>> {
+fn stmts<'s>(input: &mut &'s str) -> PResult<Vec<Stmt<'s>>> {
     repeat(1.., stmt).parse_next(input)
+}
+
+#[derive(Debug)]
+pub struct SpaeReport<'a> {
+    report: Report<'static, (&'a str, Range<usize>)>,
+    source: (&'a str, Source),
+}
+
+impl SpaeReport<'_> {
+    fn from_parse<'s>(error: ParseError<&'s str, ContextError>, input: &'s str) -> Self {
+        let mut colors = ColorGenerator::new();
+
+        let a = colors.next();
+
+        let mut ctx = error.inner().context().collect::<Vec<_>>();
+
+        let message = error
+            .inner()
+            .context()
+            .filter(|c| matches!(c, StrContext::Label(_)))
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let help = error
+            .inner()
+            .context()
+            .filter(|c| matches!(c, StrContext::Expected(_)))
+            .map(|c| c.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let file = "TODO.spae";
+        let start = error.offset();
+        let end = (start + 1..)
+            .find(|e| input.is_char_boundary(*e))
+            .unwrap_or(start);
+
+        let report = Report::build(ReportKind::Error, file, 0)
+            .with_code(
+                8, /* TODO: build out lookup table for types of errors */
+            )
+            .with_message(message.clone())
+            .with_label(
+                Label::new((file, start..end))
+                    .with_message(format!("{message} here"))
+                    .with_color(a),
+            )
+            .with_help(help)
+            .finish();
+        Self {
+            report,
+            source: (file, Source::from(input.to_owned())),
+        }
+    }
+
+    pub fn write_stderr(self) -> io::Result<()> {
+        self.report.eprint(self.source)
+    }
+}
+
+pub fn parse<'s>(input: &'s str) -> Result<Vec<Stmt<'s>>, SpaeReport> {
+    stmts
+        .parse(input)
+        .map_err(|e| SpaeReport::from_parse(e, input))
 }
 
 #[cfg(test)]
