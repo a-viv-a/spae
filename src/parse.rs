@@ -7,7 +7,7 @@ use crate::ast::*;
 use ariadne::{Color, ColorGenerator, Fmt, Label, LabelAttach, Report, ReportKind, Source};
 use eyre::Result;
 use winnow::ascii::multispace0;
-use winnow::combinator::{alt, delimited, opt, preceded, repeat, terminated};
+use winnow::combinator::{alt, cut_err, delimited, fail, opt, preceded, repeat, terminated};
 use winnow::error::{ContextError, ParseError, ParserError, StrContext};
 use winnow::prelude::*;
 use winnow::stream::AsChar;
@@ -154,9 +154,21 @@ fn finite_expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
         .parse_next(input)?;
 
     // check for description, which binds stronger than any other infix operator
-    if let Some(description) = opt(preceded(r_ws(':'), alt((string, ident_expr))))
-        .context(StrContext::Label("description"))
-        .parse_next(input)?
+    if let Some(description) = opt(preceded(
+        r_ws(':'),
+        cut_err(alt((
+            string,
+            ident_expr,
+            fail.context(StrContext::Label("non string/ident"))
+                .context(StrContext::Expected(
+                    winnow::error::StrContextValue::Description(
+                        "a string literal or an identifier (that hopefully points to a string!)",
+                    ),
+                )),
+        ))),
+    ))
+    .context(StrContext::Label("description"))
+    .parse_next(input)?
     {
         return Ok(Expr::Described(Box::new(expr), Box::new(description)));
     }
@@ -187,9 +199,18 @@ fn expr<'s>(input: &mut &'s str) -> PResult<Expr<'s>> {
             .parse_next(input)
     }
 
-    alt((expr_rtl, expr_ltr))
-        .context(StrContext::Label("expr"))
-        .parse_next(input)
+    alt((
+        expr_rtl,
+        expr_ltr,
+        fail.context(StrContext::Label("expr"))
+            .context(StrContext::Expected(
+                winnow::error::StrContextValue::Description(
+                    "this to be the start of a legal expression",
+                ),
+            )),
+    ))
+    .context(StrContext::Label("expr"))
+    .parse_next(input)
 }
 
 fn let_assignment<'s>(input: &mut &'s str) -> PResult<Stmt<'s>> {
@@ -221,16 +242,16 @@ impl SpaeReport<'_> {
 
         let a = colors.next();
 
-        let mut ctx = error.inner().context().collect::<Vec<_>>();
-
-        let message = error
+        let labels = error
             .inner()
             .context()
             .filter(|c| matches!(c, StrContext::Label(_)))
             .map(|c| c.to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-
+            .collect::<Vec<_>>();
+        let first_label = labels
+            .first()
+            .cloned()
+            .unwrap_or("unlabeled error (unexpected?)".to_string());
         let help = error
             .inner()
             .context()
@@ -245,20 +266,31 @@ impl SpaeReport<'_> {
             .find(|e| input.is_char_boundary(*e))
             .unwrap_or(start);
 
-        let report = Report::build(ReportKind::Error, file, 0)
+        let mut report = Report::build(ReportKind::Error, file, 0)
             .with_code(
                 8, /* TODO: build out lookup table for types of errors */
             )
-            .with_message(message.clone())
+            .with_message(first_label.clone())
             .with_label(
                 Label::new((file, start..end))
-                    .with_message(format!("{message} here"))
+                    .with_message(format!("{first_label} here"))
                     .with_color(a),
-            )
-            .with_help(help)
-            .finish();
+            );
+        if !help.is_empty() {
+            report = report.with_help(help);
+        }
+        if labels.len() > 1 {
+            report = report.with_note(format!(
+                "parse error labeled as {}",
+                labels
+                    .iter()
+                    .map(|l| format!(r#""{l}""#))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+        }
         Self {
-            report,
+            report: report.finish(),
             source: (file, Source::from(input.to_owned())),
         }
     }
