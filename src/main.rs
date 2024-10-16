@@ -1,15 +1,12 @@
-use std::{error::Error, fmt::Display, fs, path::PathBuf, process::ExitCode};
+use std::{fmt::Display, fs, path::PathBuf};
 
 use crate::parse::parse;
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
 use compile::evaluate;
-use eyre::{Result, WrapErr};
+use eyre::Result;
 use lower::lower;
-use winnow::{
-    error::{ContextError, ParseError},
-    Parser as WinnowParse,
-};
+use winnow::error::{ContextError, ParseError};
 
 mod ast;
 #[cfg(test)]
