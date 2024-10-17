@@ -85,15 +85,14 @@ fn main() -> Result<()> {
             path,
             compiler_path,
         } => {
-            // let spae_file = fs::read_to_string(path).expect("valid path");
-            // let ast = parse(&*spae_file)?;
-            // let l_ast = lower(ast);
-            // evaluate(compiler_path, l_ast);
+            let spae_file = fs::read_to_string(path).expect("valid path");
+            match parse(&*spae_file).map(lower) {
+                Ok(l_ast) => {
+                    evaluate(compiler_path, l_ast);
+                }
+                Err(err) => err.write_stderr().expect("no io issue"),
+            }
         }
     }
-    Ok(())
-}
-
-fn run_command<'a>(command: Command) -> Result<(), ParseError<&'a str, ContextError>> {
     Ok(())
 }

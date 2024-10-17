@@ -2,23 +2,24 @@ use std::cell::RefCell;
 
 use crate::ast::*;
 use rustc_hash::{FxHashMap, FxHashSet};
+use steel_derive::Steel;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Steel)]
 pub enum ListAmount {
     One,
     Some,
     All,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Choice<'s> {
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Steel)]
+pub struct Choice {
     // false=Maybe, true=Require
     required: bool,
     amount: ListAmount,
-    from: Vec<LAST<'s>>,
+    from: Vec<LAST>,
 }
 
-impl<'s> Choice<'s> {
+impl Choice {
     fn apply(mut self, symbol: PrefixSymbol) -> Self {
         match symbol {
             PrefixSymbol::Maybe => self.required = false,
@@ -30,7 +31,7 @@ impl<'s> Choice<'s> {
         self
     }
 
-    fn default(from: Vec<LAST<'s>>) -> Self {
+    fn default(from: Vec<LAST>) -> Self {
         Choice {
             from,
             required: true,
@@ -40,32 +41,29 @@ impl<'s> Choice<'s> {
 }
 
 /// Lowered Abstract Syntax Tree
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub enum LASTNode<'s> {
-    String(&'s str),
-    Directive(&'s str),
-    Choice(Choice<'s>),
-    Dependant {
-        when: Box<LAST<'s>>,
-        then: Box<LAST<'s>>,
-    },
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Steel)]
+pub enum LASTNode {
+    String(String),
+    Directive(String),
+    Choice(Choice),
+    Dependant { when: Box<LAST>, then: Box<LAST> },
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct LAST<'s> {
-    node: LASTNode<'s>,
-    description: Option<&'s str>,
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Steel)]
+pub struct LAST {
+    node: LASTNode,
+    description: Option<String>,
 }
 
-impl<'s> LAST<'s> {
-    fn new(node: LASTNode<'s>) -> Self {
+impl LAST {
+    fn new(node: LASTNode) -> Self {
         LAST {
             node,
             description: None,
         }
     }
 
-    fn described(node: LASTNode<'s>, description: &'s str) -> Self {
+    fn described(node: LASTNode, description: String) -> Self {
         LAST {
             node,
             description: Some(description),
@@ -112,7 +110,7 @@ impl<'s> LAST<'s> {
                 format!("{} >\n{}", when.format(), pad!(then.format()))
             }
         };
-        match self.description {
+        match &self.description {
             Some(str) => format!("{rep}\n: `{str}`"),
             None => rep,
         }
@@ -137,7 +135,7 @@ impl<'s> Ctx<'s> {
     }
 }
 
-pub fn lower<'s>(stmts: Vec<Stmt<'s>>) -> LAST<'s> {
+pub fn lower<'s>(stmts: Vec<Stmt<'s>>) -> LAST {
     let mut stmts = stmts;
     // TODO: add some syntax for figuring out the entrypoint
     // TODO: replace expect with proper syntax errors
@@ -157,14 +155,10 @@ pub fn lower<'s>(stmts: Vec<Stmt<'s>>) -> LAST<'s> {
     return ast;
 }
 
-fn lower_ast<'s>(
-    expr: Expr<'s>,
-    idents: &RefCell<FxHashMap<&str, Expr<'s>>>,
-    ctx: Ctx,
-) -> LAST<'s> {
+fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ctx: Ctx) -> LAST {
     match expr {
-        Expr::String(s) => LAST::new(LASTNode::String(s)),
-        Expr::Directive(d) => LAST::new(LASTNode::Directive(d)),
+        Expr::String(s) => LAST::new(LASTNode::String(s.to_string())),
+        Expr::Directive(d) => LAST::new(LASTNode::Directive(d.to_string())),
         Expr::Prefix(symbol, expr) => {
             let (choice, description) = match lower_ast(*expr, idents, ctx) {
                 LAST {
@@ -241,7 +235,7 @@ fn lower_ast<'s>(
                 ) => {
                     lhs.from = match infix {
                         InfixSymbol::SetMinus => {
-                            let rhs = rhs.from.into_iter().collect::<FxHashSet<LAST<'_>>>();
+                            let rhs = rhs.from.into_iter().collect::<FxHashSet<LAST>>();
                             lhs.from.into_iter().filter(|e| !rhs.contains(e)).collect()
                         }
                         InfixSymbol::Concat => {
