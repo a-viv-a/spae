@@ -16,7 +16,7 @@ pub struct Choice {
     // false=Maybe, true=Require
     required: bool,
     amount: ListAmount,
-    from: Vec<LAST>,
+    from: Vec<Node>,
 }
 
 impl Choice {
@@ -31,7 +31,7 @@ impl Choice {
         self
     }
 
-    fn default(from: Vec<LAST>) -> Self {
+    fn default(from: Vec<Node>) -> Self {
         Choice {
             from,
             required: true,
@@ -40,32 +40,33 @@ impl Choice {
     }
 }
 
-/// Lowered Abstract Syntax Tree
+/// The types a given expression can evaluate to
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Steel)]
-pub enum LASTNode {
+pub enum Type {
     String(String),
     Directive(String),
     Choice(Choice),
-    Dependant { when: Box<LAST>, then: Box<LAST> },
+    Dependant { when: Box<Node>, then: Box<Node> },
 }
 
+/// A type + an optional description
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Steel)]
-pub struct LAST {
-    node: LASTNode,
+pub struct Node {
+    ty: Type,
     description: Option<String>,
 }
 
-impl LAST {
-    fn new(node: LASTNode) -> Self {
-        LAST {
-            node,
+impl Node {
+    fn new(ty: Type) -> Self {
+        Node {
+            ty,
             description: None,
         }
     }
 
-    fn described(node: LASTNode, description: String) -> Self {
-        LAST {
-            node,
+    fn described(ty: Type, description: String) -> Self {
+        Node {
+            ty,
             description: Some(description),
         }
     }
@@ -78,10 +79,11 @@ impl LAST {
                     .collect::<String>()
             };
         }
-        let rep = match &self.node {
-            LASTNode::String(s) => format!("`{s}`"),
-            LASTNode::Directive(d) => format!("{{{d}}}"),
-            LASTNode::Choice(Choice {
+        let rep = match &self.ty {
+            // TODO: handle internal braces \ graves, and put min number wrapping
+            Type::String(s) => format!("`{s}`"),
+            Type::Directive(d) => format!("{{{d}}}"),
+            Type::Choice(Choice {
                 required,
                 amount,
                 from,
@@ -106,7 +108,7 @@ impl LAST {
                         .trim())
                 )
             }
-            LASTNode::Dependant { when, then } => {
+            Type::Dependant { when, then } => {
                 format!("{} >\n{}", when.format(), pad!(then.format()))
             }
         };
@@ -135,7 +137,7 @@ impl<'s> Ctx<'s> {
     }
 }
 
-pub fn lower<'s>(stmts: Vec<Stmt<'s>>) -> LAST {
+pub fn eval<'s>(stmts: Vec<Stmt<'s>>) -> Node {
     let mut stmts = stmts;
     // TODO: add some syntax for figuring out the entrypoint
     // TODO: replace expect with proper syntax errors
@@ -151,18 +153,18 @@ pub fn lower<'s>(stmts: Vec<Stmt<'s>>) -> LAST {
 
     let Stmt::Let(_name, entrypoint) = last_assignment;
 
-    let ast = lower_ast(entrypoint, &RefCell::new(idents), Ctx::new());
+    let ast = eval_expr(entrypoint, &RefCell::new(idents), Ctx::new());
     return ast;
 }
 
-fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ctx: Ctx) -> LAST {
+fn eval_expr<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ctx: Ctx) -> Node {
     match expr {
-        Expr::String(s) => LAST::new(LASTNode::String(s.to_string())),
-        Expr::Directive(d) => LAST::new(LASTNode::Directive(d.to_string())),
+        Expr::String(s) => Node::new(Type::String(s.to_string())),
+        Expr::Directive(d) => Node::new(Type::Directive(d.to_string())),
         Expr::Prefix(symbol, expr) => {
-            let (choice, description) = match lower_ast(*expr, idents, ctx) {
-                LAST {
-                    node: LASTNode::Choice(choice),
+            let (choice, description) = match eval_expr(*expr, idents, ctx) {
+                Node {
+                    ty: Type::Choice(choice),
                     description,
                 } => (choice, description),
                 node => (
@@ -175,25 +177,25 @@ fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ct
                     None,
                 ),
             };
-            LAST {
-                node: LASTNode::Choice(choice.apply(symbol)),
+            Node {
+                ty: Type::Choice(choice.apply(symbol)),
                 description,
             }
         }
-        Expr::List(list) => LAST::new(LASTNode::Choice(Choice::default(
+        Expr::List(list) => Node::new(Type::Choice(Choice::default(
             list.into_iter()
-                .map(|expr| lower_ast(expr, idents, ctx.clone()))
+                .map(|expr| eval_expr(expr, idents, ctx.clone()))
                 .collect(),
         ))),
         Expr::Described(expr, description) => {
-            let l_ast = lower_ast(*expr, idents, ctx.clone()).node;
-            let description = lower_ast(*description, idents, ctx);
+            let l_ast = eval_expr(*expr, idents, ctx.clone()).ty;
+            let description = eval_expr(*description, idents, ctx);
 
-            if let LASTNode::String(desc_str) = description.node {
+            if let Type::String(desc_str) = description.ty {
                 if description.description.is_some() {
                     panic!("description can't have a description")
                 }
-                return LAST::described(l_ast, desc_str);
+                return Node::described(l_ast, desc_str);
             } else {
                 panic!("description must reduce to a string")
             }
@@ -202,7 +204,7 @@ fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ct
             // TODO: replace expect with proper syntax errors
             // TODO: avoid clones with copy on write
             // TODO: avoid refcell? needed to pass idents map into both arms unless we switch to recursive
-            lower_ast(
+            eval_expr(
                 idents
                     .borrow()
                     .get(ident)
@@ -217,25 +219,25 @@ fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ct
         Expr::Infix(lhs, infix, rhs) => {
             // TODO: make this not suck
             match (
-                lower_ast(*lhs, idents, ctx.clone()),
+                eval_expr(*lhs, idents, ctx.clone()),
                 // TODO: avoid this clone
                 infix.clone(),
-                lower_ast(*rhs, idents, ctx),
+                eval_expr(*rhs, idents, ctx),
             ) {
                 (
-                    LAST {
-                        node: LASTNode::Choice(mut lhs),
+                    Node {
+                        ty: Type::Choice(mut lhs),
                         description: _,
                     },
                     InfixSymbol::Concat | InfixSymbol::SetMinus,
-                    LAST {
-                        node: LASTNode::Choice(rhs),
+                    Node {
+                        ty: Type::Choice(rhs),
                         description: _,
                     },
                 ) => {
                     lhs.from = match infix {
                         InfixSymbol::SetMinus => {
-                            let rhs = rhs.from.into_iter().collect::<FxHashSet<LAST>>();
+                            let rhs = rhs.from.into_iter().collect::<FxHashSet<Node>>();
                             lhs.from.into_iter().filter(|e| !rhs.contains(e)).collect()
                         }
                         InfixSymbol::Concat => {
@@ -245,7 +247,7 @@ fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ct
                         InfixSymbol::Dependent => unreachable!(),
                     };
 
-                    LAST::new(LASTNode::Choice(lhs))
+                    Node::new(Type::Choice(lhs))
                 }
 
                 (lhs, InfixSymbol::Concat | InfixSymbol::SetMinus, rhs) => {
@@ -254,7 +256,7 @@ fn lower_ast<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ct
                         "list infix operators should only be used on lists, found {lhs:?} and {rhs:?}"
                     )
                 }
-                (lhs, InfixSymbol::Dependent, rhs) => LAST::new(LASTNode::Dependant {
+                (lhs, InfixSymbol::Dependent, rhs) => Node::new(Type::Dependant {
                     when: Box::new(lhs),
                     then: Box::new(rhs),
                 }),

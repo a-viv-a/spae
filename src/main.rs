@@ -1,18 +1,17 @@
-use std::{fmt::Display, fs, path::PathBuf};
+use std::{fmt::Display, fs};
 
+use crate::eval::eval;
 use crate::parse::parse;
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
-use compile::evaluate;
+use compile::compile;
 use eyre::Result;
-use lower::lower;
-use winnow::error::{ContextError, ParseError};
 
 mod ast;
 #[cfg(test)]
 mod ast_macros;
 mod compile;
-mod lower;
+mod eval;
 mod parse;
 
 #[derive(Debug, Parser)]
@@ -36,14 +35,14 @@ enum Command {
         /// The path of the spae file
         path: Utf8PathBuf,
         /// The path of the scm file to use to compile it
-        compiler_path: PathBuf,
+        compiler_path: Utf8PathBuf,
     },
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum DebugDetail {
     Ast,
-    Lower,
+    Eval,
 }
 
 impl Display for DebugDetail {
@@ -53,7 +52,7 @@ impl Display for DebugDetail {
             "{}",
             match self {
                 DebugDetail::Ast => "ast",
-                DebugDetail::Lower => "lower",
+                DebugDetail::Eval => "eval",
             }
         )
     }
@@ -74,8 +73,8 @@ fn main() -> Result<()> {
                     DebugDetail::Ast => {
                         println!("{parsed:#?}");
                     }
-                    DebugDetail::Lower => {
-                        println!("{}", lower(parsed).format());
+                    DebugDetail::Eval => {
+                        println!("{}", eval(parsed).format());
                     }
                 },
                 Err(err) => err.write_stderr().expect("no io issue"),
@@ -86,9 +85,9 @@ fn main() -> Result<()> {
             compiler_path,
         } => {
             let spae_file = fs::read_to_string(path).expect("valid path");
-            match parse(&*spae_file).map(lower) {
+            match parse(&*spae_file).map(eval) {
                 Ok(l_ast) => {
-                    evaluate(compiler_path, l_ast);
+                    compile(compiler_path, l_ast).expect("compiled correctly");
                 }
                 Err(err) => err.write_stderr().expect("no io issue"),
             }
