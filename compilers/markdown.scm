@@ -1,3 +1,3 @@
 (define (compile node)
-  
-  )
+  node
+)
