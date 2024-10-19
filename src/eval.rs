@@ -2,24 +2,23 @@ use std::cell::RefCell;
 
 use crate::ast::*;
 use rustc_hash::{FxHashMap, FxHashSet};
-use steel_derive::Steel;
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Steel)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum ListAmount {
     One,
     Some,
     All,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Steel)]
-pub struct Choice {
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Choice<'s> {
     // false=Maybe, true=Require
     required: bool,
     amount: ListAmount,
-    from: Vec<Node>,
+    from: Vec<Node<'s>>,
 }
 
-impl Choice {
+impl<'s> Choice<'s> {
     fn apply(mut self, symbol: PrefixSymbol) -> Self {
         match symbol {
             PrefixSymbol::Maybe => self.required = false,
@@ -31,7 +30,7 @@ impl Choice {
         self
     }
 
-    fn default(from: Vec<Node>) -> Self {
+    fn default(from: Vec<Node<'s>>) -> Self {
         Choice {
             from,
             required: true,
@@ -41,30 +40,33 @@ impl Choice {
 }
 
 /// The types a given expression can evaluate to
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Steel)]
-pub enum Type {
-    String(String),
-    Directive(String),
-    Choice(Choice),
-    Dependant { when: Box<Node>, then: Box<Node> },
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum Type<'s> {
+    String(&'s str),
+    Directive(&'s str),
+    Choice(Choice<'s>),
+    Dependant {
+        when: Box<Node<'s>>,
+        then: Box<Node<'s>>,
+    },
 }
 
 /// A type + an optional description
-#[derive(Debug, Clone, Hash, PartialEq, Eq, Steel)]
-pub struct Node {
-    ty: Type,
-    description: Option<String>,
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Node<'s> {
+    ty: Type<'s>,
+    description: Option<&'s str>,
 }
 
-impl Node {
-    fn new(ty: Type) -> Self {
+impl<'s> Node<'s> {
+    fn new(ty: Type<'s>) -> Self {
         Node {
             ty,
             description: None,
         }
     }
 
-    fn described(ty: Type, description: String) -> Self {
+    fn described(ty: Type<'s>, description: &'s str) -> Self {
         Node {
             ty,
             description: Some(description),
@@ -137,7 +139,7 @@ impl<'s> Ctx<'s> {
     }
 }
 
-pub fn eval<'s>(stmts: Vec<Stmt<'s>>) -> Node {
+pub fn eval<'s>(stmts: Vec<Stmt<'s>>) -> Node<'s> {
     let mut stmts = stmts;
     // TODO: add some syntax for figuring out the entrypoint
     // TODO: replace expect with proper syntax errors
@@ -157,10 +159,14 @@ pub fn eval<'s>(stmts: Vec<Stmt<'s>>) -> Node {
     return ast;
 }
 
-fn eval_expr<'s>(expr: Expr<'s>, idents: &RefCell<FxHashMap<&str, Expr<'s>>>, ctx: Ctx) -> Node {
+fn eval_expr<'s>(
+    expr: Expr<'s>,
+    idents: &RefCell<FxHashMap<&str, Expr<'s>>>,
+    ctx: Ctx,
+) -> Node<'s> {
     match expr {
-        Expr::String(s) => Node::new(Type::String(s.to_string())),
-        Expr::Directive(d) => Node::new(Type::Directive(d.to_string())),
+        Expr::String(s) => Node::new(Type::String(s)),
+        Expr::Directive(d) => Node::new(Type::Directive(d)),
         Expr::Prefix(symbol, expr) => {
             let (choice, description) = match eval_expr(*expr, idents, ctx) {
                 Node {

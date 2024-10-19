@@ -4,13 +4,13 @@ use crate::eval::eval;
 use crate::parse::parse;
 use camino::Utf8PathBuf;
 use clap::{Parser, Subcommand};
-use compile::compile;
+use compilers::{enum_disp, Target};
 use eyre::Result;
 
 mod ast;
 #[cfg(test)]
 mod ast_macros;
-mod compile;
+mod compilers;
 mod eval;
 mod parse;
 
@@ -24,7 +24,7 @@ pub struct Args {
 enum Command {
     /// Debug the evaluation of a spae file
     Debug {
-        /// The path to read from
+        /// The path to read the spae file from
         path: Utf8PathBuf,
         /// The detail to show
         #[clap(long, short = 's', default_value_t = DebugDetail::Ast)]
@@ -32,10 +32,10 @@ enum Command {
     },
     /// Compile a spae file
     Compile {
-        /// The path of the spae file
+        /// The path to read the spae file from
         path: Utf8PathBuf,
-        /// The path of the scm file to use to compile it
-        compiler_path: Utf8PathBuf,
+        /// Compilation target
+        into: Target,
     },
 }
 
@@ -44,19 +44,10 @@ enum DebugDetail {
     Ast,
     Eval,
 }
-
-impl Display for DebugDetail {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                DebugDetail::Ast => "ast",
-                DebugDetail::Eval => "eval",
-            }
-        )
-    }
-}
+enum_disp!(DebugDetail {
+    Ast  => "ast",
+    Eval => "eval",
+});
 
 fn main() -> Result<()> {
     let args = Args::parse();
@@ -67,7 +58,7 @@ fn main() -> Result<()> {
 
     match args.command {
         Command::Debug { path, show } => {
-            let file = fs::read_to_string(path).expect("valid path");
+            let file = fs::read_to_string(path)?;
             match parse(file.as_str()) {
                 Ok(parsed) => match show {
                     DebugDetail::Ast => {
@@ -77,19 +68,17 @@ fn main() -> Result<()> {
                         println!("{}", eval(parsed).format());
                     }
                 },
-                Err(err) => err.write_stderr().expect("no io issue"),
+                Err(err) => err.write_stderr()?,
             }
         }
-        Command::Compile {
-            path,
-            compiler_path,
-        } => {
-            let spae_file = fs::read_to_string(path).expect("valid path");
+        Command::Compile { into, path } => {
+            let spae_file = fs::read_to_string(path)?;
             match parse(&*spae_file).map(eval) {
-                Ok(l_ast) => {
-                    compile(compiler_path, l_ast).expect("compiled correctly");
-                }
-                Err(err) => err.write_stderr().expect("no io issue"),
+                Ok(node) => match into.compile(node) {
+                    Ok(out) => println!("{out}"),
+                    Err(err) => err.write_stderr()?,
+                },
+                Err(err) => err.write_stderr()?,
             }
         }
     }
