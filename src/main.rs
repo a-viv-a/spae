@@ -51,11 +51,6 @@ enum_disp!(DebugDetail {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    // let output = stmts.parse_next(&mut input).unwrap();
-    // println!("{input}\n------\n{output:#?}\n------\n");
-    // let lowered = lower(output.clone());
-    // println!("{}", lowered.format());
-
     match args.command {
         Command::Debug { path, show } => {
             let file = fs::read_to_string(path)?;
